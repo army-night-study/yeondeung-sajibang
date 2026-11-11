@@ -1712,6 +1712,8 @@
   // ---------- resize / loop ----------
   function resize() {
     const w = wrap.clientWidth, h = wrap.clientHeight;
+    // opened in a background tab or a collapsed panel, the page can start at 0×0: wait for a real size
+    if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.fov = camera.aspect < 0.85 ? 68 : 50;
@@ -1735,6 +1737,18 @@
       camera.position.lerpVectors(fly.p0, fly.p1, e);
       controls.target.lerpVectors(fly.t0, fly.t1, e);
       if (k >= 1) fly = null;
+    }
+
+    // if the camera ever ends up at NaN (e.g. it was placed while the page had no size), start over from the overview
+    if (!Number.isFinite(camera.position.x + camera.position.y + camera.position.z + controls.target.x + controls.target.y + controls.target.z)) {
+      resize();
+      const p = overviewPose();
+      camera.position.copy(p.pos); controls.target.copy(p.target); fly = null; mode = 'overview';
+    }
+    // the canvas got a (new) size without a resize event: fit to it
+    if (wrap.clientWidth && wrap.clientHeight && Math.abs(camera.aspect - wrap.clientWidth / wrap.clientHeight) > 0.01) {
+      resize();
+      if (mode === 'overview') { const p = overviewPose(); flyTo(p.pos, p.target); }
     }
 
     // frame-time watchdog: every 2 s, average frame time picks the pixel ratio
