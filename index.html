@@ -161,6 +161,13 @@
     background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
   }
   .goal-row input[type="text"]::placeholder { color: var(--muted); }
+  /* after 완료 the goals read as text; 수정 turns them back into fields */
+  .goal-row input[type="text"][readonly] { background: transparent; border-color: transparent; padding-left: 2px; cursor: default; }
+  .goal-row input[type="text"][readonly]:focus-visible { outline: none; }
+  .goals.locked .goal-row input:checked + input[type="text"] { text-decoration: line-through; color: var(--muted); }
+  .goals-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .goals-hint { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+  #goalsDone { background: var(--khaki); color: var(--khaki-ink); border-color: transparent; font-weight: 600; }
   .goal-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
 
   .tag.me { background: var(--paper); color: var(--khaki-ink); }
@@ -225,6 +232,11 @@
     <div class="goal-row">
       <input type="checkbox" id="goalDone2" aria-label="목표 2 완료">
       <input type="text" id="goal2" maxlength="20" placeholder="목표 2 (예: 자격증 기출 20문항)" autocomplete="off">
+    </div>
+    <div class="goals-actions">
+      <span class="goals-hint" id="goalsHint">다 적었으면 완료를 누르세요.</span>
+      <button id="goalsDone" type="button">완료</button>
+      <button id="goalsEdit" type="button" hidden>수정</button>
     </div>
   </div>
   <div class="status">
@@ -1355,9 +1367,11 @@
   // kept only in this browser (localStorage); never sent to the room, so they stay private
   let mineScreen = null;
   let goals = [{ text: '', done: false }, { text: '', done: false }];
+  let goalsLocked = false;   // true after 완료: the goals are set and shown as text until 수정
   try {
     const saved = JSON.parse(localStorage.getItem('saji-goals') || 'null');
     if (Array.isArray(saved)) goals = goals.map((g, i) => ({ text: String((saved[i] && saved[i].text) || '').slice(0, 20), done: !!(saved[i] && saved[i].done) }));
+    goalsLocked = localStorage.getItem('saji-goals-locked') === '1' && goals.some(g => g.text.trim());
   } catch (e) { /* storage unavailable: start empty */ }
 
   function drawMine() {
@@ -1365,7 +1379,7 @@
     const ctx = mineScreen.ctx, w = 512, h = 300;
     ctx.fillStyle = '#0f1a12'; ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 40);
-    center(ctx, '로그인 완료 · 연등 학습 중', `24px ${BODY}`, '#1e1c0e', w / 2, 22);
+    center(ctx, goalsLocked ? '목표 확정 · 연등 학습 중' : '로그인 완료 · 목표 작성 중', `24px ${BODY}`, '#1e1c0e', w / 2, 22);
     center(ctx, '오늘의 목표', `40px ${DISPLAY}`, '#e8ebdc', w / 2, 92);
     goals.forEach((g, i) => {
       const y = 160 + i * 64, x = 52;
@@ -1384,15 +1398,48 @@
     mineScreen.tex.needsUpdate = true;
   }
   function saveGoals() {
-    try { localStorage.setItem('saji-goals', JSON.stringify(goals)); } catch (e) { /* not kept this session */ }
+    try {
+      localStorage.setItem('saji-goals', JSON.stringify(goals));
+      localStorage.setItem('saji-goals-locked', goalsLocked ? '1' : '0');
+    } catch (e) { /* not kept this session */ }
     drawMine();
+  }
+  // 완료 sets the goals (fields become read-only text); 수정 opens them for editing again.
+  // The check boxes stay usable either way: ticking a goal off is the point of setting it.
+  function setGoalsLocked(locked) {
+    goalsLocked = locked;
+    $('goals').classList.toggle('locked', locked);
+    [1, 2].forEach(i => { $('goal' + i).readOnly = locked; });
+    $('goalsDone').hidden = locked;
+    $('goalsEdit').hidden = !locked;
+    $('goalsHint').textContent = locked ? '체크해서 완료 표시를 할 수 있어요.' : '다 적었으면 완료를 누르세요.';
+    saveGoals();
   }
   [1, 2].forEach(i => {
     const text = $('goal' + i), done = $('goalDone' + i), g = goals[i - 1];
     text.value = g.text; done.checked = g.done;
     text.addEventListener('input', () => { g.text = text.value.slice(0, 20); saveGoals(); });
     done.addEventListener('change', () => { g.done = done.checked; saveGoals(); });
+    // Enter moves from the first goal to the second, and from the second it finishes
+    text.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || goalsLocked) return;
+      e.preventDefault();
+      if (i === 1) $('goal2').focus(); else $('goalsDone').click();
+    });
   });
+  $('goalsDone').addEventListener('click', () => {
+    goals.forEach((g, i) => { g.text = $('goal' + (i + 1)).value.trim().slice(0, 20); $('goal' + (i + 1)).value = g.text; });
+    if (!goals.some(g => g.text)) { say('오늘의 목표', '목표를 하나 이상 적은 뒤 완료를 눌러주세요.'); $('goal1').focus(); return; }
+    setGoalsLocked(true);
+    if (document.activeElement) document.activeElement.blur();
+    say('오늘의 목표', '목표를 저장했습니다. 내 모니터에 표시됩니다. 바꾸려면 수정을 누르세요.');
+  });
+  $('goalsEdit').addEventListener('click', () => {
+    setGoalsLocked(false);
+    $('goal1').focus();
+    say('오늘의 목표', '목표를 고친 뒤 완료를 누르세요.');
+  });
+  setGoalsLocked(goalsLocked);
 
   {
     const input = $('doingInput');
