@@ -1,0 +1,1501 @@
+<title>사이버지식정보방 연등</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+  /* Layout: full-bleed 3D barracks PC room, HUD strips styled like a unit notice board (olive drab + khaki stencil) */
+  :root {
+    --night: #0b0f0c;
+    --panel: rgba(16, 22, 17, 0.82);
+    --line: rgba(206, 214, 170, 0.18);
+    --paper: #e8ebdc;
+    --muted: #9ba48b;
+    --khaki: #d6c47e;
+    --khaki-ink: #1e1c0e;
+    --alert: #d9714a;
+    --display: "Black Han Sans", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--night);
+    color: var(--paper);
+    font-family: var(--body);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #scene { position: fixed; inset: 0; }
+  #scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .hud {
+    position: fixed; left: 0; right: 0;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; justify-content: space-between; gap: 12px;
+    pointer-events: none;
+  }
+  .hud > * { pointer-events: auto; }
+  .hud-top { top: 0; padding-top: calc(env(safe-area-inset-top, 0px) + 14px); align-items: flex-start; }
+  .hud-bottom { bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); align-items: flex-end; flex-wrap: wrap; }
+
+  .brand { flex: 1 1 0; min-width: 0; }
+  .brand .unit {
+    display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.16em;
+    color: var(--khaki-ink); background: var(--khaki); padding: 3px 7px; border-radius: 3px;
+  }
+  .brand h1 {
+    margin: 6px 0 0; font-family: var(--display); font-weight: 400;
+    font-size: clamp(22px, 5.4vw, 32px); letter-spacing: 0.02em; line-height: 1.1;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  }
+  .brand p { margin: 4px 0 0; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+
+  .meter {
+    flex: 0 0 auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; text-align: right; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    font-variant-numeric: tabular-nums;
+  }
+  .meter .clock { font-family: var(--display); font-size: 22px; line-height: 1; }
+  .meter .remain { margin-top: 5px; font-size: 11px; color: var(--khaki); letter-spacing: 0.03em; }
+  .meter .remain.off { color: var(--alert); }
+  .meter .count { margin-top: 3px; font-size: 11px; color: var(--muted); letter-spacing: 0.05em; }
+  .meter .count b { color: var(--paper); font-weight: 600; }
+
+  .status {
+    flex: 1 1 260px; min-width: 0;
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--khaki); border-radius: 8px;
+    padding: 10px 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .status .label { font-size: 10px; letter-spacing: 0.14em; color: var(--khaki); font-weight: 600; }
+  .status .msg { margin-top: 3px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; user-select: text; }
+
+  .actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  button {
+    font: 500 13px/1 var(--body); color: var(--paper);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 11px 16px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transition: background 0.2s, color 0.2s;
+  }
+  button:hover { background: rgba(38, 48, 38, 0.92); }
+  button:focus-visible { outline: 2px solid var(--khaki); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--khaki); color: var(--khaki-ink); border-color: transparent; }
+
+  #tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .tag {
+    position: absolute; left: 0; top: 0; text-align: center;
+    font: 600 11px/1 var(--body); color: var(--khaki-ink); background: var(--khaki);
+    padding: 4px 7px; border-radius: 4px; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    will-change: transform;
+  }
+  .tag::after {
+    content: ""; position: absolute; left: 50%; bottom: -4px; margin-left: -4px;
+    border: 4px solid transparent; border-bottom: 0; border-top-color: var(--khaki);
+  }
+
+  [hidden] { display: none !important; }
+  .hud-top { flex-wrap: wrap; }
+  .notice {
+    flex: 1 1 100%; min-width: 0;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--khaki); color: var(--khaki-ink);
+    border-radius: 8px; padding: 9px 14px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  .notice .chip {
+    flex: 0 0 auto; font-size: 10px; font-weight: 600; letter-spacing: 0.14em;
+    background: var(--khaki-ink); color: var(--khaki); padding: 3px 7px; border-radius: 3px;
+  }
+  .notice .text { font-family: var(--display); font-size: clamp(15px, 3.8vw, 19px); line-height: 1.3; text-wrap: balance; }
+  .notice.fresh { animation: notice-in 0.6s ease-out; }
+  @keyframes notice-in { from { transform: translateY(-6px); opacity: 0.3; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .notice.fresh { animation: none; } }
+  .doing-row {
+    flex: 1 1 100%; min-width: 0;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 8px 6px 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .doing-row label { flex: 0 0 auto; font-size: 10px; letter-spacing: 0.14em; color: var(--khaki); font-weight: 600; }
+  .doing-row input {
+    flex: 1; min-width: 0;
+    font: 16px/1.2 var(--body); color: var(--paper);
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px;
+  }
+  .doing-row input::placeholder { color: var(--muted); }
+  .doing-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
+  .tag .who { display: block; }
+  .tag .doing {
+    display: block; margin-top: 3px; max-width: 150px;
+    font-size: 10px; font-weight: 500; opacity: 0.8;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .tag .doing:empty { display: none; }
+
+  .goals {
+    flex: 1 1 100%; min-width: 0;
+    display: grid; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--khaki); border-radius: 8px;
+    padding: 10px 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .goals .label { font-size: 10px; letter-spacing: 0.14em; color: var(--khaki); font-weight: 600; }
+  .goal-row { display: flex; align-items: center; gap: 10px; }
+  .goal-row input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; margin: 0; accent-color: var(--khaki); }
+  .goal-row input[type="text"] {
+    flex: 1; min-width: 0;
+    font: 16px/1.2 var(--body); color: var(--paper);
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  }
+  .goal-row input[type="text"]::placeholder { color: var(--muted); }
+  .goal-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
+
+  .tag.me { background: var(--paper); color: var(--khaki-ink); }
+  .tag.me::after { border-top-color: var(--paper); }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .error { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+
+  @media (max-width: 520px) {
+    /* on phones the goal panel takes the status line's place while you sit */
+    .goals:not([hidden]) ~ .status { display: none; }
+    .actions { width: 100%; }
+    .actions button { flex: 1; }
+  }
+</style>
+
+<div id="scene"></div>
+<div id="tags" aria-hidden="true"></div>
+
+<header class="hud hud-top">
+  <div class="brand">
+    <span class="unit">육군 · 생활관</span>
+    <h1>사이버지식정보방</h1>
+    <p>연등 22:00 – 24:00 · 24:00 일괄 소등</p>
+  </div>
+  <div class="meter" aria-live="polite">
+    <div class="clock" id="clock">--:--</div>
+    <div class="remain" id="remain">&nbsp;</div>
+    <div class="count" id="hallLine">제1 사지방</div>
+    <div class="count">착석 <b id="seated">0</b> / <span id="total">0</span>석 · 접속 <b id="present">1</b>명</div>
+  </div>
+  <div class="notice" id="notice" role="status" hidden>
+    <span class="chip" id="noticeChip">공지</span>
+    <span class="text" id="noticeText"></span>
+  </div>
+</header>
+
+<footer class="hud hud-bottom">
+  <div class="doing-row">
+    <label for="doingInput">지금 하는 일</label>
+    <input type="text" id="doingInput" list="doingPresets" maxlength="16" placeholder="예: 토익 단어 암기" autocomplete="off" enterkeyhint="done">
+    <datalist id="doingPresets">
+      <option value="인강 수강 중"></option>
+      <option value="자격증 공부 중"></option>
+      <option value="토익 단어 암기"></option>
+      <option value="독서 중"></option>
+      <option value="전역 계획 세우는 중"></option>
+      <option value="잠깐 휴식"></option>
+    </datalist>
+  </div>
+  <div class="goals" id="goals" hidden>
+    <div class="label">오늘의 목표 · 내 모니터에 표시</div>
+    <div class="goal-row">
+      <input type="checkbox" id="goalDone1" aria-label="목표 1 완료">
+      <input type="text" id="goal1" maxlength="20" placeholder="목표 1 (예: 원격강좌 1강 수강)" autocomplete="off">
+    </div>
+    <div class="goal-row">
+      <input type="checkbox" id="goalDone2" aria-label="목표 2 완료">
+      <input type="text" id="goal2" maxlength="20" placeholder="목표 2 (예: 자격증 기출 20문항)" autocomplete="off">
+    </div>
+  </div>
+  <div class="status">
+    <div class="label" id="statusLabel">안내</div>
+    <div class="msg" id="statusMsg">사지방에 들어가는 중입니다…</div>
+  </div>
+  <div class="actions">
+    <button id="btnSalute" type="button">경례</button>
+    <button id="btnSit" type="button">앉기</button>
+    <button id="btnFriends" type="button">친구 부르기</button>
+    <button id="btnOverview" type="button">전체 보기</button>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  if (!window.THREE || !THREE.OrbitControls) {
+    document.getElementById('scene').innerHTML = '<div class="error">3D 화면을 불러오지 못했습니다. 네트워크를 확인한 뒤 새로고침해 주세요.</div>';
+    return;
+  }
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const W = 12, D = 10, H = 3;
+  const DISPLAY = '"Black Han Sans", "Malgun Gothic", sans-serif';
+  const BODY = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif';
+
+  // ---------- renderer / camera ----------
+  const wrap = document.getElementById('scene');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.95;
+  wrap.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0f0c);
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.03, 100);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI * 0.495;
+  controls.screenSpacePanning = true;
+
+  // ---------- canvas texture helpers ----------
+  function canvasTex(w, h, draw) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    draw(ctx, w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = 4;
+    return { tex: t, ctx, canvas: c };
+  }
+
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  function star(ctx, x, y, r, color) {
+    ctx.fillStyle = color; ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r;
+      ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+
+  const glowTex = canvasTex(128, 128, (ctx, w, h) => {
+    const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    g.addColorStop(0, 'rgba(255,236,196,1)');
+    g.addColorStop(0.45, 'rgba(255,220,160,0.4)');
+    g.addColorStop(1, 'rgba(255,210,150,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  }).tex;
+
+  // grey-green vinyl floor tiles
+  const floorTex = canvasTex(512, 512, (ctx, w, h) => {
+    const n = 4, s = w / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const l = 44 + rand() * 6;
+      ctx.fillStyle = `hsl(${90 + rand() * 12}, 8%, ${l}%)`;
+      ctx.fillRect(i * s, j * s, s, s);
+      ctx.globalAlpha = 0.07;
+      for (let k = 0; k < 40; k++) { ctx.fillStyle = rand() < 0.5 ? '#000' : '#fff'; ctx.fillRect(i * s + rand() * s, j * s + rand() * s, 3, 2); }
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = 'rgba(30,34,28,0.55)'; ctx.lineWidth = 3;
+    for (let i = 0; i <= n; i++) { ctx.beginPath(); ctx.moveTo(i * s, 0); ctx.lineTo(i * s, h); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i * s); ctx.lineTo(w, i * s); ctx.stroke(); }
+  }).tex;
+  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+  floorTex.repeat.set(W / 2.4, D / 2.4);
+
+  // night outside a mountain base: stars, two ridges, perimeter fence lights (the moon is a separate 3D sphere)
+  const backdropTex = canvasTex(1024, 384, (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#03060c'); g.addColorStop(0.55, '#0f1828'); g.addColorStop(1, '#141c28');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 420; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.25 + rand() * 0.75})`;
+      const s = rand() < 0.08 ? 2 : 1;
+      ctx.fillRect(rand() * w, rand() * h * 0.55, s, s);
+    }
+    const ridge = (base, amp, color, ph) => {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(0, h);
+      for (let x = 0; x <= w; x += 4) ctx.lineTo(x, base - Math.sin(x * 0.008 + ph) * amp - Math.sin(x * 0.023 + ph * 2) * amp * 0.45);
+      ctx.lineTo(w, h); ctx.fill();
+    };
+    ridge(h * 0.55, 34, '#0a1119', rand() * 6);
+    ridge(h * 0.68, 20, '#06090d', rand() * 6);
+    for (let x = 10; x < w; x += 40 + rand() * 30) {
+      const y = h * 0.72;
+      const lg = ctx.createRadialGradient(x, y, 0, x, y, 10);
+      lg.addColorStop(0, 'rgba(255,214,140,0.9)'); lg.addColorStop(1, 'rgba(255,214,140,0)');
+      ctx.fillStyle = lg; ctx.fillRect(x - 10, y - 10, 20, 20);
+    }
+    ctx.fillStyle = '#ff5a4a'; ctx.fillRect(w * 0.83, h * 0.47, 3, 3);
+  }).tex;
+
+  // wood grain for the study carrels: light oak top, warmer walnut-ish partitions
+  function woodTex(hue, sat, light) {
+    const t = canvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 70; i++) {
+        const y = rand() * h, amp = 2 + rand() * 6, ph = rand() * 6;
+        ctx.strokeStyle = `hsla(${hue - 4}, ${sat + 6}%, ${light - 8 - rand() * 10}%, ${0.15 + rand() * 0.25})`;
+        ctx.lineWidth = 0.6 + rand() * 1.6;
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.02 + ph) * amp);
+        ctx.stroke();
+      }
+    }).tex;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }
+
+  // ---------- materials ----------
+  const M = {
+    wall: new THREE.MeshStandardMaterial({ color: 0x8c9478, roughness: 0.95 }),
+    wainscot: new THREE.MeshStandardMaterial({ color: 0x4f5a44, roughness: 0.9 }),
+    ceiling: new THREE.MeshStandardMaterial({ color: 0xe4e6dc, roughness: 1 }),
+    floor: new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.6 }),
+    top: new THREE.MeshStandardMaterial({ map: woodTex(32, 45, 66), roughness: 0.5 }),
+    panel: new THREE.MeshStandardMaterial({ map: woodTex(26, 42, 44), roughness: 0.6 }),
+    panelDark: new THREE.MeshStandardMaterial({ map: woodTex(22, 40, 28), roughness: 0.65 }),
+    chair: new THREE.MeshStandardMaterial({ color: 0x1e2420, roughness: 0.9 }),
+    metal: new THREE.MeshStandardMaterial({ color: 0x8a8f99, roughness: 0.4, metalness: 0.6 }),
+    plastic: new THREE.MeshStandardMaterial({ color: 0x1c1f22, roughness: 0.5 }),
+    plasticLight: new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.45 }),
+    frame: new THREE.MeshStandardMaterial({ color: 0xe8e8df, roughness: 0.6 }),
+    bars: new THREE.MeshStandardMaterial({ color: 0x2a2f2a, roughness: 0.5, metalness: 0.4 }),
+    page: new THREE.MeshStandardMaterial({ color: 0xf2eee2, roughness: 0.9 }),
+    cap: new THREE.MeshStandardMaterial({ color: 0x4d5839, roughness: 0.95 }),
+    notebook: new THREE.MeshStandardMaterial({ color: 0x3b4a2c, roughness: 0.85 }),
+    ceilingPanel: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xeef4ff, emissiveIntensity: 1 }),
+  };
+  const bookColors = [0x8b2e2e, 0x2e4a7a, 0x3d6b4f, 0xc9a24a, 0xd8d0c0, 0x2b2b2b];
+  const bookMats = bookColors.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
+
+  const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+
+  // ---------- room ----------
+  const room = new THREE.Group(); scene.add(room);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M.floor);
+  floor.rotation.x = -Math.PI / 2; room.add(floor);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M.ceiling);
+  ceil.rotation.x = Math.PI / 2; ceil.position.y = H; room.add(ceil);
+  // walls are one-sided and face inward, so the overview camera sees through the near wall and ceiling
+  const wallDefs = [
+    [W, 0, -D / 2, 0], [W, 0, D / 2, Math.PI], [D, -W / 2, 0, Math.PI / 2], [D, W / 2, 0, -Math.PI / 2],
+  ];
+  wallDefs.forEach(([len, x, z, ry], i) => {
+    if (i > 0) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(len, H), M.wall);
+      m.position.set(x, H / 2, z); m.rotation.y = ry; room.add(m);
+    }
+    // two-tone barracks wall: dark olive lower band
+    const low = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.95), M.wainscot);
+    low.position.set(x, 0.475, z); low.rotation.y = ry; low.translateZ(0.004); room.add(low);
+  });
+
+  // back wall is built around three window openings so the real sky and moon show through
+  const WIN_X = [-3.6, 0, 3.6], WIN_W = 1.9, WIN_Y0 = 1.2, WIN_Y1 = 2.4;
+  const wallPiece = (x0, x1, y0, y1) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, y1 - y0), M.wall);
+    m.position.set((x0 + x1) / 2, (y0 + y1) / 2, -D / 2); room.add(m);
+  };
+  wallPiece(-W / 2, W / 2, 0, WIN_Y0); wallPiece(-W / 2, W / 2, WIN_Y1, H);
+  let edge = -W / 2;
+  WIN_X.forEach(x => { wallPiece(edge, x - WIN_W / 2, WIN_Y0, WIN_Y1); edge = x + WIN_W / 2; });
+  wallPiece(edge, W / 2, WIN_Y0, WIN_Y1);
+
+  const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(42, 15.75), new THREE.MeshBasicMaterial({ map: backdropTex }));
+  backdrop.position.set(0, 2, -14); scene.add(backdrop);
+
+  // the moon: NASA SVS CGI Moon Kit (LRO LROC colour mosaic + LOLA laser-altimeter elevation, 1K)
+  const moonUniforms = {
+    map: { value: null }, hmap: { value: null }, ready: { value: 0 },
+    // sun almost behind the viewer: a bright waxing gibbous, near side facing us with north up, as seen from Korea
+    sunDir: { value: new THREE.Vector3(0.28, 0.06, 1).normalize() },
+  };
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(0.42, 96, 48), new THREE.ShaderMaterial({
+    uniforms: moonUniforms,
+    vertexShader: `
+      uniform sampler2D hmap; uniform float ready;
+      varying vec2 vUv; varying vec3 vN;
+      void main() {
+        vUv = uv;
+        vN = normalize(mat3(modelMatrix) * normal);
+        float h = ready > 0.5 ? texture2D(hmap, uv).r : 0.5;
+        vec3 p = position + normal * (h - 0.5) * 0.012;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: `
+      uniform sampler2D map; uniform sampler2D hmap; uniform vec3 sunDir; uniform float ready;
+      varying vec2 vUv; varying vec3 vN;
+      void main() {
+        vec3 N = normalize(vN);
+        vec3 c = vec3(0.72);
+        if (ready > 0.5) {
+          // bump the normal from the elevation map so craters catch the light at the terminator
+          vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), N));
+          vec3 B = cross(N, T);
+          vec2 du = vec2(1.0 / 1024.0, 0.0), dv = vec2(0.0, 1.0 / 512.0);
+          float hx = texture2D(hmap, vUv + du).r - texture2D(hmap, vUv - du).r;
+          float hy = texture2D(hmap, vUv + dv).r - texture2D(hmap, vUv - dv).r;
+          N = normalize(N + (T * hx - B * hy) * 1.5);
+          c = texture2D(map, vUv).rgb;
+        }
+        // seen from the ground the moon reads warm: dark maria in deep gold, bright highlands in pale honey
+        float lum = dot(c, vec3(0.299, 0.587, 0.114));
+        vec3 gold = mix(vec3(0.66, 0.5, 0.22), vec3(1.0, 0.91, 0.64), smoothstep(0.15, 0.75, lum));
+        // soft terminator (no hard 3D shading); the unlit edge keeps a faint earthshine
+        float l = smoothstep(-0.08, 0.35, dot(N, sunDir));
+        gl_FragColor = vec4(gold * (0.4 + lum * 1.05) * (l * 1.2 + 0.04), 1.0);
+      }`,
+  }));
+  moon.rotation.y = -Math.PI / 2; // turn the near side (longitude 0) toward the room
+  // far enough out to sit in the middle window seen from the desks, and still clear the wall top in the overview
+  moon.position.set(0.3, 1.9, -12); moon.scale.setScalar(1.45); scene.add(moon);
+  // warm glow around the moon: a tight bright ring and a wide faint one
+  [[4.4, 0.5], [10, 0.16]].forEach(([size, opacity], i) => {
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffd27a, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.position.set(0.3, 1.9, -12.7 - i * 0.2); scene.add(halo);
+  });
+  {
+    const loader = new THREE.TextureLoader();
+    let n = 0;
+    const done = () => { if (++n === 2) moonUniforms.ready.value = 1; };
+    loader.load('moon/lroc_color_1k.jpg', t => { t.wrapS = THREE.RepeatWrapping; moonUniforms.map.value = t; done(); });
+    loader.load('moon/ldem_1k.jpg', t => { t.wrapS = THREE.RepeatWrapping; moonUniforms.hmap.value = t; done(); });
+  }
+
+  // window frames and bars
+  WIN_X.forEach(x => {
+    const t = 0.06;
+    [[1.9 + t * 2, t, 0, 0.6 + t / 2], [1.9 + t * 2, t, 0, -0.6 - t / 2], [t, 1.2, -0.95 - t / 2, 0], [t, 1.2, 0.95 + t / 2, 0], [0.03, 1.2, 0, 0]]
+      .forEach(([w, h, dx, dy]) => { const f = box(w, h, 0.05, M.frame); f.position.set(x + dx, 1.8 + dy, -D / 2 + 0.03); room.add(f); });
+    for (let k = -3; k <= 3; k++) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1.2, 6), M.bars);
+      b.position.set(x + k * 0.26, 1.8, -D / 2 + 0.07); room.add(b);
+    }
+    const sill = box(2.1, 0.03, 0.16, M.frame); sill.position.set(x, 1.18, -D / 2 + 0.08); room.add(sill);
+  });
+
+  // ceiling light panels (downward-facing planes)
+  const ceilingPanels = [];
+  for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), M.ceilingPanel);
+    p.rotation.x = Math.PI / 2; p.position.set(ix * 3.8, H - 0.01, iz * 3); room.add(p); ceilingPanels.push(p);
+  }
+
+  // wall clock (right wall) showing the viewer's local time
+  const clockCanvas = canvasTex(256, 256, () => {});
+  function drawClock() {
+    const ctx = clockCanvas.ctx, s = 256, c = s / 2, now = new Date();
+    ctx.clearRect(0, 0, s, s);
+    ctx.fillStyle = '#f4f4ec'; ctx.beginPath(); ctx.arc(c, c, 120, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 10; ctx.strokeStyle = '#2b2f26'; ctx.stroke();
+    ctx.fillStyle = '#2b2f26';
+    for (let i = 0; i < 12; i++) { ctx.save(); ctx.translate(c, c); ctx.rotate(i * Math.PI / 6); ctx.fillRect(-3, -108, 6, i % 3 ? 12 : 22); ctx.restore(); }
+    const hand = (ang, len, wid) => { ctx.save(); ctx.translate(c, c); ctx.rotate(ang); ctx.fillRect(-wid / 2, -len, wid, len + 12); ctx.restore(); };
+    const m = now.getMinutes(), h = now.getHours() % 12;
+    hand((h + m / 60) * Math.PI / 6, 62, 9);
+    hand(m * Math.PI / 30, 92, 6);
+    ctx.fillStyle = '#b5452f'; hand(now.getSeconds() * Math.PI / 30, 100, 2);
+    ctx.beginPath(); ctx.arc(c, c, 7, 0, Math.PI * 2); ctx.fill();
+    clockCanvas.tex.needsUpdate = true;
+  }
+  drawClock();
+  const clockMesh = new THREE.Mesh(new THREE.CircleGeometry(0.28, 40), new THREE.MeshStandardMaterial({ map: clockCanvas.tex, roughness: 0.6, transparent: true }));
+  clockMesh.position.set(W / 2 - 0.02, 2.35, 0); clockMesh.rotation.y = -Math.PI / 2; room.add(clockMesh);
+
+  // ---------- posters ----------
+  // each poster: [width, height, position, rotationY, draw(ctx, w, h)]
+  function poster(w, h, pos, ry, draw) {
+    const t = canvasTex(512, Math.round(512 * h / w), (ctx, cw, ch) => draw(ctx, cw, ch));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t.tex, roughness: 0.8 }));
+    m.position.copy(pos); m.rotation.y = ry; room.add(m);
+  }
+  const center = (ctx, text, font, color, x, y) => { ctx.font = font; ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y); };
+  const camo = (ctx, cw, ch, cols) => {
+    ctx.fillStyle = cols[0]; ctx.fillRect(0, 0, cw, ch);
+    for (let i = 0; i < 46; i++) {
+      ctx.fillStyle = cols[1 + Math.floor(rand() * (cols.length - 1))];
+      ctx.beginPath();
+      const x = rand() * cw, y = rand() * ch, r = 20 + rand() * 50;
+      for (let a = 0; a < Math.PI * 2; a += 0.6) ctx.lineTo(x + Math.cos(a) * r * (0.6 + rand() * 0.6), y + Math.sin(a) * r * (0.6 + rand() * 0.6));
+      ctx.fill();
+    }
+  };
+  const LW = -W / 2 + 0.02, RW = W / 2 - 0.02, FW = D / 2 - 0.02;
+
+  function buildPosters() {
+    // name board above the windows
+    poster(3.2, 0.36, new THREE.Vector3(0, 2.72, -D / 2 + 0.02), 0, (ctx, cw, ch) => {
+      ctx.fillStyle = '#2f3a28'; ctx.fillRect(0, 0, cw, ch);
+      ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, ch - 6, cw, 6);
+      star(ctx, 40, ch / 2, 18, '#d6c47e'); star(ctx, cw - 40, ch / 2, 18, '#d6c47e');
+      center(ctx, '사 이 버 지 식 정 보 방', `36px ${DISPLAY}`, '#f1eedc', cw / 2, ch / 2 + 2);
+    });
+
+    // left wall: army poster, security poster, quiet sign
+    poster(0.9, 1.25, new THREE.Vector3(LW, 1.75, -2.6), Math.PI / 2, (ctx, cw, ch) => {
+      camo(ctx, cw, ch, ['#56603f', '#3d4630', '#6e6a48', '#2a2f22']);
+      ctx.fillStyle = 'rgba(20,24,16,0.55)'; ctx.fillRect(0, ch * 0.52, cw, ch * 0.48);
+      star(ctx, cw / 2, ch * 0.24, 70, '#e6d58e');
+      center(ctx, '육 군', `120px ${DISPLAY}`, '#f4f0dc', cw / 2, ch * 0.64);
+      center(ctx, '강한 전우, 든든한 대한민국', `30px ${DISPLAY}`, '#e6d58e', cw / 2, ch * 0.8);
+      center(ctx, '오늘도 충성!', `26px ${BODY}`, '#d9dccb', cw / 2, ch * 0.9);
+    });
+    poster(0.8, 1.1, new THREE.Vector3(LW, 1.75, -0.6), Math.PI / 2, (ctx, cw, ch) => {
+      ctx.fillStyle = '#14202c'; ctx.fillRect(0, 0, cw, ch);
+      ctx.fillStyle = '#c23b2b'; ctx.fillRect(0, 0, cw, ch * 0.2);
+      center(ctx, '군사보안', `64px ${DISPLAY}`, '#ffffff', cw / 2, ch * 0.1);
+      // lock icon
+      ctx.strokeStyle = '#e6d58e'; ctx.lineWidth = 16; ctx.beginPath(); ctx.arc(cw / 2, ch * 0.36, 52, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = '#e6d58e'; ctx.fillRect(cw / 2 - 80, ch * 0.36, 160, 120);
+      ctx.fillStyle = '#14202c'; ctx.beginPath(); ctx.arc(cw / 2, ch * 0.36 + 50, 16, 0, Math.PI * 2); ctx.fill();
+      center(ctx, '보안은 생활이다', `48px ${DISPLAY}`, '#f4f0dc', cw / 2, ch * 0.66);
+      center(ctx, '부대 내 촬영·녹음 금지', `28px ${BODY}`, '#c9cfbe', cw / 2, ch * 0.77);
+      center(ctx, '개인정보·군사정보 게시 금지', `28px ${BODY}`, '#c9cfbe', cw / 2, ch * 0.84);
+    });
+    poster(0.9, 0.42, new THREE.Vector3(LW, 2.05, 1.3), Math.PI / 2, (ctx, cw, ch) => {
+      ctx.fillStyle = '#f1eedc'; ctx.fillRect(0, 0, cw, ch);
+      ctx.strokeStyle = '#2f3a28'; ctx.lineWidth = 10; ctx.strokeRect(14, 14, cw - 28, ch - 28);
+      center(ctx, '정  숙', `120px ${DISPLAY}`, '#2f3a28', cw / 2, ch / 2 + 6);
+    });
+    poster(0.8, 1.1, new THREE.Vector3(LW, 1.75, 3.0), Math.PI / 2, (ctx, cw, ch) => {
+      ctx.fillStyle = '#e9e4cf'; ctx.fillRect(0, 0, cw, ch);
+      ctx.fillStyle = '#3d4a2e'; ctx.fillRect(0, 0, cw, ch * 0.3);
+      center(ctx, '병 자기개발', `30px ${BODY}`, '#d6c47e', cw / 2, ch * 0.09);
+      center(ctx, '군 복무가', `58px ${DISPLAY}`, '#ffffff', cw / 2, ch * 0.17);
+      center(ctx, '스펙이 되다', `58px ${DISPLAY}`, '#ffffff', cw / 2, ch * 0.25);
+      ['원격강좌 학점 취득', '자격증 응시료 지원', '어학 · 독서 마일리지'].forEach((t, i) => {
+        const y = ch * (0.42 + i * 0.13);
+        ctx.fillStyle = '#3d4a2e'; ctx.fillRect(56, y - 20, 40, 40);
+        ctx.font = `34px ${BODY}`; ctx.fillStyle = '#26301d'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(t, 118, y);
+      });
+      center(ctx, '연등 시간에 꾸준히', `28px ${BODY}`, '#5b6550', cw / 2, ch * 0.88);
+    });
+
+    // right wall: lights-out rules and loyalty poster
+    poster(0.95, 0.75, new THREE.Vector3(RW, 1.6, -2.0), -Math.PI / 2, (ctx, cw, ch) => {
+      ctx.fillStyle = '#f1eedc'; ctx.fillRect(0, 0, cw, ch);
+      ctx.fillStyle = '#2f3a28'; ctx.fillRect(0, 0, cw, 78);
+      center(ctx, '연등 운영 안내', `46px ${DISPLAY}`, '#f1eedc', cw / 2, 42);
+      center(ctx, '22:00 – 24:00', `76px ${DISPLAY}`, '#2f3a28', cw / 2, 150);
+      ctx.font = `27px ${BODY}`; ctx.fillStyle = '#2b2f26'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ['· 점호 후 당직사관 승인 인원에 한함', '· 사용 전 출입 기록부 작성', '· 24:00 일괄 소등 · PC 종료'].forEach((t, i) => ctx.fillText(t, 40, 238 + i * 44));
+    });
+    poster(0.8, 1.1, new THREE.Vector3(RW, 1.75, 2.0), -Math.PI / 2, (ctx, cw, ch) => {
+      const g = ctx.createLinearGradient(0, 0, 0, ch);
+      g.addColorStop(0, '#2c3524'); g.addColorStop(1, '#151a12');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, cw, ch);
+      for (let i = 0; i < 3; i++) star(ctx, cw / 2 + (i - 1) * 90, ch * 0.17, 34, '#d6c47e');
+      center(ctx, '충 성 !', `110px ${DISPLAY}`, '#f4f0dc', cw / 2, ch * 0.42);
+      ctx.fillStyle = '#d6c47e'; ctx.fillRect(cw * 0.2, ch * 0.54, cw * 0.6, 4);
+      center(ctx, '서로를 지키는 전우', `40px ${DISPLAY}`, '#e6d58e', cw / 2, ch * 0.64);
+      center(ctx, '배려하는 병영생활', `40px ${DISPLAY}`, '#e6d58e', cw / 2, ch * 0.73);
+      center(ctx, '언어폭력 · 부조리 ZERO', `26px ${BODY}`, '#b9c0a8', cw / 2, ch * 0.88);
+    });
+
+    // front wall (visible from back-row seats): usage rules
+    poster(1.1, 0.8, new THREE.Vector3(1.8, 1.7, FW), Math.PI, (ctx, cw, ch) => {
+      ctx.fillStyle = '#f1eedc'; ctx.fillRect(0, 0, cw, ch);
+      ctx.fillStyle = '#c23b2b'; ctx.fillRect(0, 0, cw, 70);
+      center(ctx, '사이버지식정보방 이용 수칙', `38px ${DISPLAY}`, '#ffffff', cw / 2, 38);
+      ctx.font = `26px ${BODY}`; ctx.fillStyle = '#2b2f26'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ['1. 1인 1PC, 1회 사용 시간 준수', '2. 유해 사이트 접속 금지', '3. USB 등 저장매체 반입 금지', '4. 음식물 반입 금지', '5. 사용 후 자리 정돈 · 로그아웃'].forEach((t, i) => ctx.fillText(t, 36, 120 + i * 50));
+    });
+    poster(1.0, 0.7, new THREE.Vector3(-1.8, 1.7, FW), Math.PI, (ctx, cw, ch) => {
+      camo(ctx, cw, ch, ['#4e5839', '#3a4229', '#6a6644', '#262a1d']);
+      ctx.fillStyle = 'rgba(16,20,12,0.6)'; ctx.fillRect(0, ch * 0.3, cw, ch * 0.4);
+      center(ctx, '대한민국 육군', `64px ${DISPLAY}`, '#f4f0dc', cw / 2, ch * 0.5);
+    });
+  }
+  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(buildPosters);
+
+  // ---------- lights ----------
+  const hemi = new THREE.HemisphereLight(0xd0dcff, 0x2a3020, 0.28); scene.add(hemi);
+  const ceilingLights = [-3.8, 0, 3.8].map(x => {
+    const l = new THREE.PointLight(0xf2f6ff, 0.45, 14, 1); l.position.set(x, H - 0.25, 0); scene.add(l); return l;
+  });
+  const islandZ = [-2.0, 2.0];
+  const lampFill = islandZ.map(z => {
+    const l = new THREE.PointLight(0xffe0b0, 0.45, 6.5, 1.2); l.position.set(0, 1.15, z); scene.add(l); return l;
+  });
+  const screenFill = islandZ.map(z => {
+    const l = new THREE.PointLight(0x8fb4ff, 0.3, 4.5, 1.4); l.position.set(0, 1.0, z); scene.add(l); return l;
+  });
+
+  // ---------- monitor screens ----------
+  function screenTex(kind) {
+    return canvasTex(256, 150, (ctx, w, h) => {
+      if (kind === 'login') {
+        const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#16261c'); g.addColorStop(1, '#0d1610');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        star(ctx, w / 2, 38, 14, '#d6c47e');
+        center(ctx, '사이버지식정보방', `18px ${DISPLAY}`, '#e8ebdc', w / 2, 66);
+        ctx.fillStyle = '#e8ebdc'; ctx.fillRect(68, 84, 120, 16); ctx.fillRect(68, 106, 120, 16);
+        ctx.fillStyle = '#7a8669'; ctx.font = `10px ${BODY}`; ctx.textAlign = 'left'; ctx.fillText('군번', 72, 93); ctx.fillText('비밀번호', 72, 115);
+        ctx.fillStyle = '#d6c47e'; ctx.fillRect(98, 128, 60, 13);
+      } else if (kind === 'lecture') {
+        ctx.fillStyle = '#f3f5f7'; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#2d4a74'; ctx.fillRect(0, 0, w, 18);
+        ctx.fillStyle = '#111'; ctx.fillRect(10, 26, 160, 92);
+        ctx.fillStyle = '#334'; ctx.fillRect(30, 46, 120, 50);
+        ctx.fillStyle = '#ddd'; ctx.fillRect(10, 122, 160, 3); ctx.fillStyle = '#e04'; ctx.fillRect(10, 122, 70 + rand() * 80, 3);
+        ctx.fillStyle = '#c9d0da'; for (let i = 0; i < 6; i++) ctx.fillRect(180, 28 + i * 16, 66, 9);
+      } else if (kind === 'doc') {
+        ctx.fillStyle = '#e9ecef'; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#2f6b45'; ctx.fillRect(0, 0, w, 16);
+        ctx.fillStyle = '#fff'; ctx.fillRect(46, 22, 164, 128);
+        ctx.fillStyle = '#9aa3ad'; for (let i = 0; i < 10; i++) ctx.fillRect(58, 34 + i * 10, 80 + rand() * 60, 4);
+      }
+    }).tex;
+  }
+  const screens = { login: [], lecture: [], doc: [], mine: null };
+  const screenMat = tex => new THREE.MeshBasicMaterial({ map: tex });
+  const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+
+  // ---------- carrels ----------
+  const seats = [];
+  const pickables = [];
+  const ledMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff0d2, emissiveIntensity: 1.6 });
+
+  function drawPlate(seat) {
+    const ctx = seat.plate.ctx, w = 128, h = 48;
+    const state = seat.mine ? 'mine' : seat.taken ? 'taken' : 'free';
+    ctx.fillStyle = state === 'mine' ? '#d6c47e' : '#1d241b'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = state === 'mine' ? '#1e1c0e' : state === 'taken' ? '#7d8270' : '#e8ebdc';
+    ctx.font = `32px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('PC ' + String(seat.no).padStart(2, '0'), w / 2 + (state === 'taken' ? 8 : 0), h / 2 + 2);
+    if (state === 'taken') { ctx.fillStyle = '#d9714a'; ctx.beginPath(); ctx.arc(14, h / 2, 5, 0, Math.PI * 2); ctx.fill(); }
+    seat.plate.tex.needsUpdate = true;
+  }
+
+  // ---------- soldiers: chibi proportions, buzz cut, army 생활복 ----------
+  // 생활복: charcoal track jacket + trousers, bright green piping beside the zip and over the
+  // raglan shoulder seams, green-and-black stripe down the outer sleeve and trouser leg,
+  // stand collar, ribbed cuffs, oval green-bordered patch on the left chest
+  const patchTex = canvasTex(96, 72, (ctx, w, h) => {
+    ctx.fillStyle = '#1f6b2e';
+    ctx.beginPath(); ctx.moveTo(14, 4); ctx.lineTo(w - 14, 4); ctx.lineTo(w - 3, 18); ctx.lineTo(w - 3, h - 18); ctx.lineTo(w - 14, h - 4); ctx.lineTo(14, h - 4); ctx.lineTo(3, h - 18); ctx.lineTo(3, 18); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e9f2e2'; ctx.fillRect(12, 16, w - 24, h - 32);
+    ctx.fillStyle = '#d23c63'; ctx.fillRect(22, 24, 22, 8);
+    ctx.fillStyle = '#2f8a3c'; ctx.fillRect(48, 26, 26, 4); ctx.fillRect(40, 40, 34, 6);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(20, 8, w - 40, 3); ctx.fillRect(20, h - 11, w - 40, 3);
+  }).tex;
+  const SM = {
+    skins: [0xf3d0ab, 0xecc39b, 0xe2b58b].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 })),
+    hair: new THREE.MeshStandardMaterial({ color: 0x24201d, roughness: 1 }),
+    shirt: new THREE.MeshStandardMaterial({ color: 0x353638, roughness: 0.75 }),
+    collar: new THREE.MeshStandardMaterial({ color: 0x2c2d2f, roughness: 0.8, side: THREE.DoubleSide }),
+    cuff: new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.9 }),
+    pants: new THREE.MeshStandardMaterial({ color: 0x333436, roughness: 0.75 }),
+    green: new THREE.MeshStandardMaterial({ color: 0x2fae1f, roughness: 0.55, emissive: 0x1f7a12, emissiveIntensity: 0.35 }),
+    black: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7 }),
+    zip: new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.4, metalness: 0.3 }),
+    badge: new THREE.MeshStandardMaterial({ map: patchTex, roughness: 0.8 }),
+    shoe: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }),
+    eye: new THREE.MeshBasicMaterial({ color: 0x1a1512 }),
+    blush: new THREE.MeshBasicMaterial({ color: 0xf2a0a0, transparent: true, opacity: 0.75 }),
+    patch: new THREE.MeshStandardMaterial({ color: 0x1d2117, roughness: 0.8 }),
+    glasses: new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.4 }),
+    leaf: new THREE.MeshStandardMaterial({ color: 0xf6f2e6, roughness: 0.9, side: THREE.DoubleSide }),
+  };
+  const soldiers = [];
+  const sph = (r, mat, ws = 16, hs = 12) => new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), mat);
+  function limb(parent, a, b, r, mat, cap = true) {
+    const len = a.distanceTo(b);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    parent.add(m);
+    if (cap) parent.add(sph(r, mat, 10, 8).translateX(b.x).translateY(b.y).translateZ(b.z));
+    return m;
+  }
+  // green stripe edged in black, running along the outer side (+side) of a limb from a to b
+  function stripe(parent, a, b, side, r) {
+    const off = new THREE.Vector3(side.x, side.y, side.z);
+    limb(parent, a.clone().add(off.clone().multiplyScalar(r * 0.78)), b.clone().add(off.clone().multiplyScalar(r * 0.78)), r * 0.4, SM.black, false);
+    limb(parent, a.clone().add(off.clone().multiplyScalar(r * 0.95)), b.clone().add(off.clone().multiplyScalar(r * 0.95)), r * 0.28, SM.green, false);
+  }
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // one arm: upper arm shoulder->elbow, forearm in its own group (pivot at the elbow) ending in a hand
+  function arm(parent, k, shoulder, elbow, handOff, skin) {
+    const g = new THREE.Group(); parent.add(g);
+    const side = V(k * 0.9, 0.44, 0).normalize();
+    limb(g, shoulder, elbow, 0.04, SM.shirt);
+    stripe(g, shoulder, elbow, side, 0.04);
+    const fore = new THREE.Group(); fore.position.copy(elbow); g.add(fore);
+    const cuffAt = handOff.clone().multiplyScalar(0.88);
+    limb(fore, V(0, 0, 0), handOff, 0.035, SM.shirt);
+    stripe(fore, V(0, 0, 0), cuffAt, side, 0.035);
+    limb(fore, cuffAt, handOff, 0.037, SM.cuff, false);
+    const hand = sph(0.035, skin, 12, 10); hand.position.copy(handOff).multiplyScalar(1.13); fore.add(hand);
+    return { g, fore };
+  }
+
+  function makeSoldier(parent, standing) {
+    // local space: the soldier faces -z; seated, the desk is toward -z and the seat top is at y 0.49
+    const s = new THREE.Group(); parent.add(s);
+    const skin = SM.skins[Math.floor(rand() * SM.skins.length)];
+
+    [-1, 1].forEach(k => {
+      const hip = V(k * 0.07, 0.53, 0.06);
+      const knee = standing ? V(k * 0.07, 0.3, 0.05) : V(k * 0.07, 0.53, -0.2);
+      const ankle = standing ? V(k * 0.07, 0.09, 0.05) : V(k * 0.07, 0.1, -0.22);
+      limb(s, hip, knee, 0.055, SM.pants);
+      limb(s, knee, ankle, 0.048, SM.pants);
+      stripe(s, hip, knee, V(k, 0, 0), 0.055);
+      stripe(s, knee, ankle, V(k, 0, 0), 0.048);
+      const shoe = box(0.085, 0.06, 0.15, SM.shoe); shoe.position.set(k * 0.07, 0.04, standing ? 0.01 : -0.25); s.add(shoe);
+    });
+    const belly = sph(0.125, SM.shirt, 20, 14); belly.scale.set(1, 0.75, 0.9); belly.position.set(0, 0.58, 0.05); s.add(belly);
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.125, 0.2, 18), SM.shirt); torso.position.set(0, 0.68, 0.05); s.add(torso);
+    const shoulders = sph(0.1, SM.shirt, 18, 12); shoulders.scale.set(1.25, 0.55, 0.95); shoulders.position.set(0, 0.77, 0.05); s.add(shoulders);
+    // stand collar, open a little at the front
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.072, 0.06, 20, 1, true, 0.35, Math.PI * 2 - 0.7), SM.collar);
+    collar.rotation.y = Math.PI; collar.position.set(0, 0.815, 0.04); s.add(collar);
+    // zip with green piping either side, from collar to hem (front of the jacket faces -z)
+    const front = (y, x = 0) => {
+      const r = y > 0.62 ? 0.1 + (0.125 - 0.1) * (0.78 - y) / 0.2 : 0.125 * 0.9;
+      return V(x, y, 0.05 - Math.sqrt(Math.max(0, r * r - x * x)) - 0.004);
+    };
+    limb(s, front(0.79), front(0.6), 0.0045, SM.zip, false);
+    limb(s, front(0.6), front(0.55), 0.0045, SM.zip, false);
+    [-1, 1].forEach(k => {
+      limb(s, front(0.79, k * 0.011), front(0.6, k * 0.011), 0.004, SM.green, false);
+      limb(s, front(0.6, k * 0.011), front(0.55, k * 0.011), 0.004, SM.green, false);
+      // raglan piping from the collar over the front of the shoulder down to the underarm
+      limb(s, V(k * 0.05, 0.8, 0.0), V(k * 0.1, 0.775, -0.01), 0.004, SM.green, false);
+      limb(s, V(k * 0.1, 0.775, -0.01), V(k * 0.104, 0.71, 0.0), 0.004, SM.green, false);
+    });
+    // oval army patch on the wearer's left chest
+    const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.0375), SM.badge);
+    badge.position.copy(front(0.71, -0.048)).add(V(0, 0, -0.003)); badge.rotation.set(0.1, Math.PI + 0.35, 0); s.add(badge);
+
+    // seated: elbows rest on the desk edge (desk top y 0.76, its edge 0.12 in front of the chair),
+    // forearms lie flat and the hands hold the book open. standing: arms hang at the sides.
+    // the wearer's right arm (+x) also has a salute pose, swapped in while saluting
+    const arms = [-1, 1].map(k => standing
+      ? arm(s, k, V(k * 0.12, 0.77, 0.05), V(k * 0.16, 0.63, 0.06), V(k * 0.01, -0.13, -0.01), skin)
+      : arm(s, k, V(k * 0.12, 0.77, 0.05), V(k * 0.18, 0.81, -0.12), V(-k * 0.035, -0.005, -0.17), skin));
+    const salute = arm(s, 1, V(0.12, 0.77, 0.05), V(0.25, 0.84, -0.02), V(-0.12, 0.13, -0.075), skin);
+    salute.g.visible = false;
+
+    let flip = null;
+    if (!standing) {
+    // open book on the desk, with one page that flips from right to left
+    const book = new THREE.Group(); book.position.set(0, 0.768, -0.31); s.add(book);
+    book.add(box(0.31, 0.008, 0.21, bookMats[Math.floor(rand() * bookMats.length)]));
+    [-1, 1].forEach(k => { const pg = box(0.145, 0.014, 0.2, M.page); pg.position.set(k * 0.075, 0.009, 0); pg.rotation.z = -k * 0.05; book.add(pg); });
+    flip = new THREE.Group(); flip.position.y = 0.018; book.add(flip);
+    const leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.19), SM.leaf);
+    leaf.rotation.x = -Math.PI / 2; leaf.position.x = 0.072; flip.add(leaf);
+    flip.visible = false;
+    }
+
+    // big round head
+    const head = new THREE.Group(); head.position.set(0, 0.95, 0.03); s.add(head);
+    head.add(sph(0.155, skin, 28, 20));
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.161, 28, 16, 0, Math.PI * 2, 0, 1.3), SM.hair);
+    hair.rotation.x = 0.6; head.add(hair);
+    [-1, 1].forEach(k => {
+      const ear = sph(0.035, skin, 10, 8); ear.scale.set(0.6, 1, 0.8); ear.position.set(k * 0.155, -0.01, 0.01); head.add(ear);
+      const eye = sph(0.019, SM.eye, 10, 8); eye.scale.set(1, 1.25, 0.6); eye.position.set(k * 0.055, -0.01, -0.145); head.add(eye);
+      const shine = sph(0.006, new THREE.MeshBasicMaterial({ color: 0xffffff }), 6, 6); shine.position.set(k * 0.055 + 0.006, -0.002, -0.157); head.add(shine);
+      const blush = sph(0.026, SM.blush, 10, 8); blush.scale.set(1.2, 0.6, 0.3); blush.position.set(k * 0.093, -0.05, -0.125); head.add(blush);
+    });
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.004, 6, 12, Math.PI), SM.eye);
+    mouth.rotation.z = Math.PI; mouth.position.set(0, -0.06, -0.15); head.add(mouth);
+    if (rand() < 0.35) {
+      [-1, 1].forEach(k => { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.005, 6, 18), SM.glasses); ring.position.set(k * 0.055, -0.01, -0.152); head.add(ring); });
+      const bridge = box(0.04, 0.006, 0.006, SM.glasses); bridge.position.set(0, -0.005, -0.155); head.add(bridge);
+    }
+
+    const sol = { root: s, head, arms, salute, flip, standing, phase: rand() * 100, born: performance.now(), saluteUntil: 0 };
+    if (!reduceMotion) s.scale.setScalar(0.001);
+    soldiers.push(sol);
+    return sol;
+  }
+  function removeSoldier(sol) {
+    sol.root.parent && sol.root.parent.remove(sol.root);
+    if (sol.holder) scene.remove(sol.holder);
+    const i = soldiers.indexOf(sol); if (i >= 0) soldiers.splice(i, 1);
+  }
+
+  function makeSeat(no, x, z, ry, taken) {
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+
+    const top = box(1.02, 0.03, 0.6, M.top); top.position.y = 0.745; g.add(top);
+    [-0.51, 0.51].forEach(sx => { const s = box(0.02, 1.2, 0.6, M.panel); s.position.set(sx, 0.6, 0); g.add(s); });
+    const front = box(1.0, 1.2, 0.02, M.panel); front.position.set(0, 0.6, -0.29); g.add(front);
+    const lip = box(1.0, 0.02, 0.1, M.panelDark); lip.position.set(0, 1.2, -0.24); g.add(lip);
+    const led = box(0.82, 0.012, 0.03, ledMat); led.position.set(0, 1.184, -0.22); g.add(led);
+
+    const deskGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.6),
+      new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
+    deskGlow.rotation.x = -Math.PI / 2; deskGlow.position.set(0, 0.762, -0.04); g.add(deskGlow);
+
+    // PC: monitor, keyboard, mouse, tower under the desk
+    const stand = box(0.05, 0.1, 0.05, M.plastic); stand.position.set(0, 0.81, -0.2); g.add(stand);
+    const foot = box(0.18, 0.012, 0.12, M.plastic); foot.position.set(0, 0.766, -0.2); g.add(foot);
+    const bezel = box(0.54, 0.33, 0.025, M.plastic); bezel.position.set(0, 1.0, -0.2); g.add(bezel);
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.51, 0.3), new THREE.MeshBasicMaterial({ color: 0x0d1610 }));
+    scr.position.set(0, 1.0, -0.186); g.add(scr);
+    const kb = box(0.38, 0.015, 0.12, M.plasticLight); kb.position.set(-0.02, 0.768, 0.04); g.add(kb);
+    const mouse = box(0.045, 0.02, 0.075, M.plasticLight); mouse.position.set(0.27, 0.77, 0.05); g.add(mouse);
+    const tower = box(0.18, 0.4, 0.42, M.plastic); tower.position.set(0.3, 0.2, -0.05); g.add(tower);
+    const pled = box(0.01, 0.01, 0.005, new THREE.MeshBasicMaterial({ color: 0x5bd16a })); pled.position.set(0.3, 0.36, 0.163); g.add(pled);
+
+    // a couple of study books lying flat by the monitor
+    for (let i = 0, by = 0.767; i < 1 + Math.floor(rand() * 3); i++) {
+      const b = box(0.17, 0.025, 0.23, bookMats[Math.floor(rand() * bookMats.length)]);
+      b.position.set(-0.38, by + 0.0125, -0.12); b.rotation.y = (rand() - 0.5) * 0.3; g.add(b); by += 0.026;
+    }
+
+    const plate = canvasTex(128, 48, () => {});
+    const plateMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.056), new THREE.MeshStandardMaterial({ map: plate.tex, roughness: 0.6, emissive: 0xffffff, emissiveMap: plate.tex, emissiveIntensity: 0.25 }));
+    plateMesh.position.set(0.36, 1.25, -0.278); g.add(plateMesh);
+
+    // chair
+    const chair = new THREE.Group(); chair.position.set(0, 0, 0.56); g.add(chair);
+    const seatM = box(0.46, 0.06, 0.44, M.chair); seatM.position.y = 0.46; chair.add(seatM);
+    const back = box(0.44, 0.4, 0.05, M.chair); back.position.set(0, 0.78, 0.21); chair.add(back);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.4, 10), M.metal); post.position.y = 0.23; chair.add(post);
+    const strut = box(0.03, 0.3, 0.03, M.metal); strut.position.set(0, 0.6, 0.2); chair.add(strut);
+    for (let k = 0; k < 5; k++) {
+      const leg = box(0.03, 0.025, 0.26, M.metal); leg.position.y = 0.04;
+      leg.rotation.y = k * Math.PI * 2 / 5; leg.translateZ(0.13); chair.add(leg);
+    }
+    chair.rotation.y = (rand() - 0.5) * 0.3;
+
+    const seat = { no, group: g, chair, kb, plate, screen: scr, taken, mine: false, name: null };
+    g.traverse(o => { if (o.isMesh) { o.userData.seat = seat; pickables.push(o); } });
+    seats.push(seat);
+  }
+
+  const takenSet = new Set([2, 5, 8, 9, 13, 16, 17, 20, 23]);
+  let no = 1;
+  islandZ.forEach(zc => {
+    // back half faces the windows, front half faces the entrance
+    for (let i = 0; i < 6; i++, no++) makeSeat(no, (i - 2.5) * 1.05, zc - 0.3, Math.PI, false);
+    for (let i = 0; i < 6; i++, no++) makeSeat(no, (2.5 - i) * 1.05, zc + 0.3, 0, false);
+  });
+  islandZ.forEach(zc => [-1, 1].forEach(s => {
+    const cap = box(0.04, 1.25, 1.24, M.panelDark); cap.position.set(s * (3 * 1.05 + 0.02), 0.625, zc); scene.add(cap);
+  }));
+
+  function setScreen(seat) {
+    const tex = seat.mine ? screens.mine : seat.taken ? seat.busyTex : screens.login[seat.no % screens.login.length];
+    seat.screen.material.dispose();
+    seat.screen.material = screenMat(tex);
+  }
+  // ---------- people in this 사지방 ----------
+  // Everyone is a person { id, n, seat, seatAt, saluteAt, joinedAt, isMe }: n is the 용사 number
+  // taken in entry order, seat is 1..24 or null (standing in the aisle). Online, people are the
+  // viewers in the same named room; offline (no room), a few simulated soldiers keep you company.
+  const HALL_CAP = 24;
+  const tagLayer = document.getElementById('tags');
+  const avatars = new Map();
+  let people = [];
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', isMe: true };
+  // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
+  // Text from other viewers is untrusted: strip control/invisible characters, cap the length, render as text only.
+  const cleanDoing = s => (typeof s === 'string' ? s : '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, 16);
+  try { me.doing = cleanDoing(localStorage.getItem('saji-doing')); } catch (e) { /* storage unavailable */ }
+  const NPC_DOING = ['인강 수강 중', '자격증 공부 중', '토익 단어 암기', '독서 중', '전역 계획 세우는 중', '부모님께 편지 쓰는 중', '한국사 기출 풀이', ''];
+  let online = false, hall = null, hallNo = 1, myPeer = null;
+  let npcs = [];
+  const label = p => '용사' + (p.n || '') + (p.isMe ? ' (나)' : '');
+
+  // two people on one seat: the earlier seatAt keeps it
+  function seatOwners(list) {
+    const owner = new Map();
+    list.forEach(p => {
+      if (!p.seat) return;
+      const cur = owner.get(p.seat);
+      if (!cur || p.seatAt < cur.seatAt || (p.seatAt === cur.seatAt && p.id < cur.id)) owner.set(p.seat, p);
+    });
+    return owner;
+  }
+
+  function syncPeople(list) {
+    people = list;
+    const owners = seatOwners(list);
+    seats.forEach(seat => {
+      const p = owners.get(seat.no) || null;
+      const taken = !!p && !p.isMe, mine = !!p && p.isMe, ownerId = p ? p.id : null;
+      seat.name = p ? label(p) : null;
+      if (seat.taken === taken && seat.mine === mine && seat.owner === ownerId) return;
+      seat.taken = taken; seat.mine = mine; seat.owner = ownerId;
+      // pull the chair in and push the keyboard back so the book has room
+      seat.chair.position.z = p ? 0.42 : 0.56; seat.chair.rotation.y = 0;
+      seat.kb.position.z = p ? -0.07 : 0.04;
+      if (seat.busyTex) { drawPlate(seat); setScreen(seat); }
+    });
+
+    // people without a seat stand in a line in the aisle, facing the room's entrance
+    const standing = list.filter(p => !(p.seat && owners.get(p.seat) === p)).sort((a, b) => (a.n || 1e9) - (b.n || 1e9));
+    const seen = new Set();
+    list.forEach(p => {
+      seen.add(p.id);
+      const seated = !!p.seat && owners.get(p.seat) === p;
+      const where = seated ? 'seat' + p.seat : 'stand';
+      let a = avatars.get(p.id);
+      if (!a) {
+        const tag = document.createElement('div');
+        tag.className = 'tag' + (p.isMe ? ' me' : '');
+        const who = document.createElement('span'); who.className = 'who';
+        const doing = document.createElement('span'); doing.className = 'doing';
+        tag.append(who, doing);
+        tagLayer.appendChild(tag);
+        a = { tag, who, doing, where: null, sol: null, saluteAt: p.saluteAt, named: !!p.n, name: '' };
+        avatars.set(p.id, a);
+      }
+      if (a.where !== where) {
+        if (a.sol) removeSoldier(a.sol);
+        if (seated) a.sol = makeSoldier(seats[p.seat - 1].chair, false);
+        else {
+          const holder = new THREE.Group(); holder.rotation.y = Math.PI; scene.add(holder);
+          a.sol = makeSoldier(holder, true); a.sol.holder = holder;
+        }
+        a.sol.tag = a.tag;
+        a.where = where;
+      }
+      if (!seated) {
+        const i = standing.indexOf(p), col = i % 10, row = Math.floor(i / 10);
+        a.sol.holder.position.set(-2.7 + col * 0.6, 0, -0.2 + row * 0.5);
+      }
+      if (p.saluteAt !== a.saluteAt) {
+        a.saluteAt = p.saluteAt;
+        a.sol.saluteUntil = performance.now() + 2200;
+        if (!p.isMe && p.n) say('경례', `${label(p)}이(가) 경례했습니다. 충성!`);
+      }
+      if (p.n && !a.named && !p.isMe) say('입실', `${label(p)}이(가) 들어왔습니다.`);
+      a.named = !!p.n;
+      a.name = label(p);
+      if (a.who.textContent !== a.name) a.who.textContent = a.name;
+      const doing = cleanDoing(p.doing);
+      if (a.doing.textContent !== doing) a.doing.textContent = doing;
+    });
+    avatars.forEach((a, id) => {
+      if (seen.has(id)) return;
+      if (a.named && a.name) say('퇴실', `${a.name}이(가) 나갔습니다.`);
+      removeSoldier(a.sol); a.tag.remove(); avatars.delete(id);
+    });
+    updateHud();
+  }
+
+  function render() {
+    syncPeople(online ? roomPeople() : [me, ...npcs]);
+  }
+
+  // ---------- offline: simulated soldiers walk in and take the next numbers ----------
+  function startSolo() {
+    online = false;
+    me.n = 1;
+    let next = 2;
+    const add = seatNo => {
+      if (me.seat === seatNo || npcs.some(p => p.seat === seatNo)) return;
+      npcs.push({ id: 'npc' + next, n: next++, seat: seatNo, seatAt: Date.now(), saluteAt: 0, joinedAt: Date.now(), isMe: false,
+        doing: NPC_DOING[Math.floor(Math.random() * NPC_DOING.length)] });
+      render();
+    };
+    [...takenSet].sort(() => rand() - 0.5).forEach((s, i) => setTimeout(() => add(s), 700 + i * 500));
+    setInterval(() => {
+      const free = seats.filter(s => !s.taken && !s.mine);
+      if (!free.length || npcs.length >= 15) return;
+      add(free[Math.floor(Math.random() * free.length)].no);
+    }, 15000);
+    render();
+    say('안내', '함께 접속할 수 없어 오프라인 체험으로 시작합니다. 앉기를 누르거나 빈 PC석을 눌러 앉으세요.');
+  }
+
+  // ---------- online: the room capability (everyone with this page open right now) ----------
+  // Lobby presence says which 사지방 each viewer is in; each 사지방 is a named room "saji-N".
+  // A 사지방 holds 24; the 25th viewer goes to the next one.
+  const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi ? v : null);
+  function roomPeople() {
+    const list = [];
+    let sawMe = false;
+    if (!hall) return [me];
+    hall.peers().forEach(p => {
+      if (p.kind !== 'viewer') return;
+      if (p.sameTab) { sawMe = true; myPeer = p.peer; list.push(Object.assign({}, me, { id: p.peer })); return; }
+      const pr = p.presence || {};
+      const seat = num(pr.seat, 1, HALL_CAP);
+      list.push({
+        id: p.peer, isMe: false,
+        n: Number.isInteger(pr.n) ? num(pr.n, 1, 9999) || 0 : 0,
+        seat: Number.isInteger(seat) ? seat : null,
+        seatAt: num(pr.seatAt, 0, 1e15) || 0,
+        saluteAt: num(pr.saluteAt, 0, 1e15) || 0,
+        joinedAt: num(pr.joinedAt, 0, 1e15) || 1e15,
+        doing: cleanDoing(pr.doing),
+      });
+    });
+    if (!sawMe) list.push(me);
+    return list;
+  }
+  function publishMe() {
+    if (!online || !hall) return;
+    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing }).catch(() => {});
+  }
+  const byArrival = (a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1);
+
+  // ---------- transport ----------
+  // On claude.ai the page uses the artifact's room capability. Anywhere else (GitHub Pages) it
+  // connects browsers directly over WebRTC with Trystero, which only uses public Nostr relays to
+  // find peers. The Trystero adapter offers the same few calls the page uses from the room API.
+  const ARTIFACT_URL = 'https://claude.ai/artifact/Jv8gxG4hzFWJCuhkKPWx9d';
+  const APP_ID = 'yeondeung-sajibang-v1';
+  // 친구 부르기: a private code in the address (#code) puts friends in their own 사지방
+  let privateCode = (/^#([a-z0-9]{6,16})$/.exec(location.hash) || [])[1] || null;
+  const roomName = h => (privateCode ? 'f-' + privateCode + '-' : '') + 'saji-' + h;
+  let lobbyRef = null;
+
+  function trysteroRoom(T, name) {
+    const r = T.joinRoom(privateCode ? { appId: APP_ID, password: privateCode } : { appId: APP_ID }, name);
+    const others = new Map(), listeners = new Set(), state = r.makeAction('state');
+    let mine = {}, snap = [];
+    const send = target => { try { Promise.resolve(state.send(mine, target ? { target } : undefined)).catch(() => {}); } catch (e) { /* peer gone */ } };
+    const rebuild = () => {
+      snap = Object.freeze([{ peer: T.selfId, kind: 'viewer', sameTab: true, isMe: true, presence: mine },
+        ...[...others].map(([id, p]) => ({ peer: id, kind: 'viewer', sameTab: false, isMe: false, presence: p }))]);
+      listeners.forEach(fn => { try { fn({ peers: snap }); } catch (e) { /* keep others running */ } });
+    };
+    r.onPeerJoin = id => { others.set(id, {}); send(id); rebuild(); };
+    r.onPeerLeave = id => { others.delete(id); rebuild(); };
+    state.onMessage = (data, meta) => {
+      const id = meta && meta.peerId;
+      if (!id || !data || typeof data !== 'object' || Array.isArray(data) || JSON.stringify(data).length > 2048) return;
+      others.set(id, data); rebuild();
+    };
+    rebuild();
+    return {
+      name,
+      peers: () => snap,
+      presence: async patch => {
+        mine = Object.assign({}, mine, patch);
+        Object.keys(patch).forEach(k => { if (patch[k] === null) delete mine[k]; });
+        send(); rebuild();
+      },
+      onPeers: fn => { listeners.add(fn); setTimeout(() => fn({ peers: snap }), 0); return () => listeners.delete(fn); },
+      leave: async () => { listeners.clear(); r.leave(); },
+    };
+  }
+
+  async function getLobby() {
+    // the claude.ai viewer provides window.claude; give it a moment to appear before deciding we are elsewhere
+    for (let i = 0; i < 10 && !window.claude; i++) await new Promise(r => setTimeout(r, 150));
+    if (window.claude) { try { return await window.claude.use('room'); } catch (e) { return null; } }
+    try {
+      const T = await import('https://cdn.jsdelivr.net/npm/trystero@0.26.0/+esm');
+      return {
+        trystero: true,
+        peers: () => [],
+        onPeers: fn => { const t = setTimeout(() => fn({ peers: [] }), 0); return () => clearTimeout(t); },
+        presence: async () => {},
+        join: async name => trysteroRoom(T, name),
+      };
+    } catch (e) { return null; }
+  }
+
+  async function startOnline() {
+    const lobby = await getLobby();
+    if (!lobby) return startSolo();
+    lobbyRef = lobby;
+    // let the lobby roster arrive, then pick the first 사지방 that still has room
+    // (friends' rooms and Trystero start at 1; the in-room overflow check moves the 25th person on)
+    await new Promise(res => {
+      let un = null, t = setTimeout(done, 3000);
+      function done() { clearTimeout(t); if (un) un(); res(); }
+      un = lobby.onPeers(() => { clearTimeout(t); t = setTimeout(done, 1200); });
+    });
+    const counts = {};
+    if (!privateCode) lobby.peers().forEach(p => {
+      if (p.sameTab || p.kind !== 'viewer') return;
+      const h = p.presence && p.presence.hall;
+      if (Number.isInteger(h) && h > 0 && h < 1000) counts[h] = (counts[h] || 0) + 1;
+    });
+    let h = 1;
+    while ((counts[h] || 0) >= HALL_CAP) h++;
+    enterHall(lobby, h);
+  }
+
+  async function enterHall(lobby, h) {
+    let room;
+    try { room = await lobby.join(roomName(h)); } catch (e) { if (!online) startSolo(); return; }
+    hall = room; hallNo = h; online = true;
+    me.n = 0; me.seat = null; me.joinedAt = Date.now();
+    if (!privateCode) lobby.presence({ hall: h }).catch(() => {});
+    publishMe();
+    room.onPeers(() => { if (hall === room) onHallChange(); });
+    // once the room's roster has arrived: overflow check, then take the next 용사 number
+    setTimeout(() => {
+      if (hall !== room) return;
+      const list = roomPeople().sort(byArrival);
+      if (list.findIndex(p => p.isMe) >= HALL_CAP) {
+        room.leave().catch(() => {});
+        say('이동', `제${h} 사지방이 가득 차서 제${h + 1} 사지방으로 이동합니다.`);
+        enterHall(lobby, h + 1);
+        return;
+      }
+      me.n = Math.max(0, ...list.filter(p => !p.isMe).map(p => p.n)) + 1;
+      publishMe();
+      if (privateCode) say('입실', `친구 전용 제${h} 사지방에 ${label(me)}(으)로 들어왔습니다. 친구 초대 주소: ${(window.claude ? ARTIFACT_URL : location.origin + location.pathname)}#${privateCode}`);
+      else say('입실', `제${h} 사지방에 ${label(me)}(으)로 들어왔습니다. 앉기를 누르거나 빈 PC석을 눌러 앉으세요.`);
+      render();
+    }, 1500);
+    render();
+  }
+
+  function onHallChange() {
+    const list = roomPeople(), others = list.filter(p => !p.isMe);
+    const mine = Object.assign({}, me, { id: myPeer || 'me' });
+    // two people took the same number at once: the later arrival takes the next one
+    if (me.n && others.some(o => o.n === me.n && byArrival(o, mine) < 0)) {
+      me.n = Math.max(...others.map(o => o.n)) + 1;
+      publishMe();
+    }
+    // two people sat down on the same seat at once: the later one stands back up
+    if (me.seat) {
+      const owner = seatOwners(list.map(p => (p.isMe ? mine : p))).get(me.seat);
+      if (owner && owner.id !== mine.id) {
+        const lost = me.seat;
+        me.seat = null; publishMe();
+        say('PC ' + pad(lost) + '번석', '다른 용사가 먼저 앉았습니다. 다른 빈 자리를 골라주세요.');
+        goOverview(true);
+      }
+    }
+    render();
+  }
+
+  fontsReady.then(() => {
+    screens.login = [screenTex('login')];
+    mineScreen = canvasTex(512, 300, () => {});
+    screens.mine = mineScreen.tex;
+    drawMine();
+    const busy = [screenTex('lecture'), screenTex('doc'), screenTex('lecture')];
+    seats.forEach((s, i) => { s.busyTex = busy[i % busy.length]; drawPlate(s); setScreen(s); });
+    render();
+    startOnline();
+  });
+
+
+  // ---------- HUD ----------
+  const $ = id => document.getElementById(id);
+  $('total').textContent = seats.length;
+  // ---------- my two goals, typed in the panel and drawn on my own monitor ----------
+  // kept only in this browser (localStorage); never sent to the room, so they stay private
+  let mineScreen = null;
+  let goals = [{ text: '', done: false }, { text: '', done: false }];
+  try {
+    const saved = JSON.parse(localStorage.getItem('saji-goals') || 'null');
+    if (Array.isArray(saved)) goals = goals.map((g, i) => ({ text: String((saved[i] && saved[i].text) || '').slice(0, 20), done: !!(saved[i] && saved[i].done) }));
+  } catch (e) { /* storage unavailable: start empty */ }
+
+  function drawMine() {
+    if (!mineScreen) return;
+    const ctx = mineScreen.ctx, w = 512, h = 300;
+    ctx.fillStyle = '#0f1a12'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 40);
+    center(ctx, '로그인 완료 · 연등 학습 중', `24px ${BODY}`, '#1e1c0e', w / 2, 22);
+    center(ctx, '오늘의 목표', `40px ${DISPLAY}`, '#e8ebdc', w / 2, 92);
+    goals.forEach((g, i) => {
+      const y = 160 + i * 64, x = 52;
+      ctx.strokeStyle = '#c3cab2'; ctx.lineWidth = 3; ctx.strokeRect(x, y - 16, 32, 32);
+      if (g.done) {
+        ctx.strokeStyle = '#d6c47e'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(x + 6, y); ctx.lineTo(x + 14, y + 9); ctx.lineTo(x + 27, y - 9); ctx.stroke();
+      }
+      ctx.font = `28px ${BODY}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      let text = g.text.trim() || `목표 ${i + 1}을 입력하세요`;
+      while (ctx.measureText(text).width > w - x - 70 && text.length > 1) text = text.slice(0, -2) + '…';
+      ctx.fillStyle = !g.text.trim() ? '#6b7563' : g.done ? '#8d9682' : '#e8ebdc';
+      ctx.fillText(text, x + 50, y + 1);
+      if (g.done && g.text.trim()) { ctx.fillStyle = '#8d9682'; ctx.fillRect(x + 50, y, ctx.measureText(text).width, 3); }
+    });
+    mineScreen.tex.needsUpdate = true;
+  }
+  function saveGoals() {
+    try { localStorage.setItem('saji-goals', JSON.stringify(goals)); } catch (e) { /* not kept this session */ }
+    drawMine();
+  }
+  [1, 2].forEach(i => {
+    const text = $('goal' + i), done = $('goalDone' + i), g = goals[i - 1];
+    text.value = g.text; done.checked = g.done;
+    text.addEventListener('input', () => { g.text = text.value.slice(0, 20); saveGoals(); });
+    done.addEventListener('change', () => { g.done = done.checked; saveGoals(); });
+  });
+
+  {
+    const input = $('doingInput');
+    input.value = me.doing;
+    let timer = null;
+    const commit = () => {
+      clearTimeout(timer);
+      const v = cleanDoing(input.value);
+      if (v === me.doing) return;
+      me.doing = v;
+      try { localStorage.setItem('saji-doing', v); } catch (e) { /* not kept this session */ }
+      publishMe(); render();
+    };
+    // update the tag shortly after typing pauses, and right away on Enter or leaving the field
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(commit, 600); });
+    input.addEventListener('change', commit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { commit(); input.blur(); } });
+  }
+
+  function updateHud() {
+    $('goals').hidden = !me.seat;
+    $('seated').textContent = seats.filter(s => s.taken || s.mine).length;
+    $('present').textContent = people.length;
+    const where = (privateCode ? '친구 전용 ' : '') + `제${hallNo} 사지방`;
+    $('hallLine').textContent = online ? `${where} · 최대 ${HALL_CAP}명` : `${where} · 오프라인 체험`;
+    $('btnSit').textContent = me.seat ? '일어서기' : '앉기';
+  }
+  function say(label, msg) { $('statusLabel').textContent = label; $('statusMsg').textContent = msg; }
+  const pad = n => String(n).padStart(2, '0');
+  function tickClock() {
+    const d = new Date(), h = d.getHours(), m = d.getMinutes();
+    $('clock').textContent = pad(h) + ':' + pad(m);
+    const remain = $('remain');
+    if (h >= 22) {
+      const left = (24 - h) * 60 - m;
+      remain.textContent = `소등까지 ${Math.floor(left / 60)}시간 ${pad(left % 60)}분`;
+      remain.classList.remove('off');
+    } else {
+      remain.textContent = '연등 시간 외 · 22:00 시작';
+      remain.classList.add('off');
+    }
+    drawClock();
+    updateNotice(d);
+  }
+
+  // ---------- timed notices ----------
+  // 21:30–22:00  sit down and write today's goals
+  // 22:00–23:50  one motivational line, changing every 30 minutes (22:00, 22:30, 23:00, 23:30)
+  // 23:50–24:00  write tomorrow's tasks and wrap up the day
+  // The line for each half-hour is picked from the date and slot, so everyone sees the same one.
+  const MOTTOS = [
+    '오늘 버틴 1시간이 전역 후 1년을 바꾼다.',
+    '남들 잘 때 한 줄 더. 그게 차이를 만든다.',
+    '핑계는 생활관에 두고 와라.',
+    '체력은 연병장에서, 실력은 여기서 만든다.',
+    '전역날 웃는 놈은 지금 펜을 든 놈이다.',
+    '국방부 시계는 간다. 네 실력도 같이 가게 하라.',
+    '어제의 나보다 딱 한 페이지 더.',
+    '포기하고 싶은 순간이 바로 승부처다.',
+    '사나이 약속, 오늘 목표는 오늘 끝낸다.',
+    '땀은 배신하지 않는다. 공부도 그렇다.',
+    '지금 이 두 시간이 사회에서 쓸 무기다.',
+    '편한 길 말고 강한 길을 가라.',
+    '행군도 버텼다. 이 한 문제쯤이야.',
+    '목표 없는 하루는 경계병 없는 초소다.',
+    '끝까지 버티는 놈이 결국 이긴다.',
+    '충성은 나라에, 열정은 나 자신에게.',
+  ];
+  function mottoFor(d, slot) {
+    // small deterministic hash of the date + half-hour slot; never repeat the previous slot's line
+    const pick = s => {
+      let x = (d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate()) * 8 + s;
+      x = Math.imul(x ^ (x >>> 15), 2246822519); x ^= x >>> 13;
+      return (x >>> 0) % MOTTOS.length;
+    };
+    let i = pick(slot);
+    if (slot > 0 && i === pick(slot - 1)) i = (i + 1) % MOTTOS.length;
+    return MOTTOS[i];
+  }
+  function noticeFor(d) {
+    const mins = d.getHours() * 60 + d.getMinutes();
+    if (mins >= 21 * 60 + 30 && mins < 22 * 60) return { chip: '공지', text: '자리에 착석하여 오늘의 목표를 적어주세요.' };
+    if (mins >= 22 * 60 && mins < 23 * 60 + 50) return { chip: '오늘의 한마디', text: mottoFor(d, Math.floor((mins - 22 * 60) / 30)) };
+    if (mins >= 23 * 60 + 50) return { chip: '공지', text: '내일 할 일을 적으면서 하루를 마무리하세요.' };
+    return null;
+  }
+  let noticeKey = null;
+  function updateNotice(d) {
+    const n = noticeFor(d), key = n ? n.chip + n.text : '';
+    if (key === noticeKey) return;
+    noticeKey = key;
+    const el = $('notice');
+    el.hidden = !n;
+    if (!n) return;
+    $('noticeChip').textContent = n.chip;
+    $('noticeText').textContent = n.text;
+    el.classList.remove('fresh'); void el.offsetWidth; el.classList.add('fresh');
+  }
+  tickClock(); setInterval(tickClock, 1000);
+
+  // ---------- camera moves ----------
+  let fly = null, mode = 'overview';
+  function overviewPose() {
+    // phones look down the length of the islands so the rows fill the tall screen;
+    // distance is fitted so both islands stay in frame at any aspect ratio
+    const portrait = camera.aspect < 0.85;
+    const dir = portrait ? new THREE.Vector3(1, 0.9, 0.08) : new THREE.Vector3(0.09, 0.68, 1);
+    const R = portrait ? 3.6 : 4.4;
+    const vf = THREE.MathUtils.degToRad(camera.fov);
+    const hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
+    const d = Math.min(22, R / Math.sin(Math.min(vf, hf) / 2));
+    const target = new THREE.Vector3(0, 0.4, 0);
+    return { pos: target.clone().add(dir.normalize().multiplyScalar(d)), target };
+  }
+  function flyTo(pos, target) {
+    fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: target, start: performance.now(), dur: reduceMotion ? 1 : 1200 };
+  }
+  function goOverview(quiet) {
+    mode = 'overview';
+    controls.minDistance = 2; controls.maxDistance = 20;
+    const p = overviewPose(); flyTo(p.pos, p.target);
+    if (quiet !== true) say('안내', '앉기를 누르거나 빈 PC석을 눌러 앉으세요. 드래그하면 둘러볼 수 있습니다.');
+  }
+  function sitAt(seat) {
+    me.seat = seat.no; me.seatAt = Date.now();
+    publishMe(); render();
+    mode = 'seat';
+    controls.minDistance = 0.2; controls.maxDistance = 2.5;
+    // sit a little further back on tall screens so the whole carrel fits
+    // high enough over your own shoulder that the monitor (and your goals on it) clears your head
+    const eye = seat.group.localToWorld(new THREE.Vector3(0, 1.45, camera.aspect < 0.85 ? 1.25 : 0.9));
+    const look = seat.group.localToWorld(new THREE.Vector3(0, 0.98, -0.2));
+    flyTo(eye, look);
+    say(`${label(me)} · PC ${pad(seat.no)}번석`, '로그인했습니다. 24:00 소등 전에 로그아웃하세요. 다른 빈 자리를 누르면 옮길 수 있습니다.');
+  }
+  function standUp() {
+    if (!me.seat) return;
+    me.seat = null; publishMe(); render();
+    goOverview(true);
+    say(label(me), '자리에서 일어났습니다.');
+  }
+  function onPick(seat) {
+    if (seat.taken) { say('PC ' + pad(seat.no) + '번석', `${seat.name}이(가) 사용 중인 자리입니다. 번호판에 주황 점이 없는 자리를 골라주세요.`); return; }
+    sitAt(seat);
+  }
+  function salute() {
+    me.saluteAt = Date.now();
+    publishMe(); render();
+    say(label(me), '충성! 경례했습니다.');
+    const btn = $('btnSalute'); btn.disabled = true; setTimeout(() => (btn.disabled = false), 2500);
+    // offline, the simulated soldiers return the salute
+    if (!online) npcs.forEach(p => setTimeout(() => { p.saluteAt = Date.now(); render(); }, 400 + Math.random() * 900));
+  }
+
+  // tap vs drag
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  let down = null;
+  renderer.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!down) return;
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t;
+    down = null;
+    if (moved > 8 || dt > 500) return;
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(pickables, false)[0];
+    if (hit) onPick(hit.object.userData.seat);
+  });
+
+  $('btnOverview').addEventListener('click', goOverview);
+  $('btnSalute').addEventListener('click', salute);
+  $('btnSit').addEventListener('click', () => {
+    if (me.seat) { standUp(); return; }
+    const free = seats.filter(s => !s.taken && !s.mine);
+    if (!free.length) { say('만석', '빈 PC석이 없습니다.'); return; }
+    sitAt(free[Math.floor(Math.random() * free.length)]);
+  });
+
+  // 친구 부르기: make (or reuse) a private code, move into that friends-only 사지방 and copy its address
+  $('btnFriends').addEventListener('click', () => {
+    const fresh = !privateCode;
+    if (fresh) {
+      const abc = 'abcdefghijkmnpqrstuvwxyz23456789', bytes = crypto.getRandomValues(new Uint8Array(10));
+      privateCode = Array.from(bytes, b => abc[b % abc.length]).join('');
+      try { history.replaceState(null, '', '#' + privateCode); } catch (e) { /* address bar not ours (claude.ai) */ }
+    }
+    const base = window.claude ? ARTIFACT_URL : location.origin + location.pathname;
+    const link = base + '#' + privateCode;
+    const done = copied => say('친구 부르기', (copied ? '친구 전용 사지방 주소를 복사했습니다. 친구에게 보내주세요: ' : '이 주소를 친구에게 보내주세요: ') + link);
+    // copy inside the click itself (clipboard needs the gesture), fall back to showing the address
+    try { navigator.clipboard.writeText(link).then(() => done(true), () => done(false)); } catch (e) { done(false); }
+    if (fresh) {
+      if (online && lobbyRef) {
+        const old = hall; hall = null;
+        if (old) old.leave().catch(() => {});
+        if (me.seat) goOverview(true);
+        enterHall(lobbyRef, 1);
+      }
+      updateHud();
+    }
+  });
+
+  // ---------- resize / loop ----------
+  function resize() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.fov = camera.aspect < 0.85 ? 68 : 50;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', () => { resize(); if (mode === 'overview') { const p = overviewPose(); flyTo(p.pos, p.target); } });
+  resize();
+  const start = overviewPose();
+  camera.position.copy(start.pos).add(new THREE.Vector3(3, 2, 3));
+  controls.target.copy(start.target);
+  controls.minDistance = 2; controls.maxDistance = 20;
+  flyTo(start.pos, start.target);
+
+  const tagPos = new THREE.Vector3();  const ease = k => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+  function loop(now) {
+    if (fly) {
+      const k = Math.min(1, (now - fly.start) / fly.dur), e = ease(k);
+      camera.position.lerpVectors(fly.p0, fly.p1, e);
+      controls.target.lerpVectors(fly.t0, fly.t1, e);
+      if (k >= 1) fly = null;
+    }
+
+    const t = now * 0.001, motion = reduceMotion ? 0 : 1;
+    soldiers.forEach(s => {
+      const p = t + s.phase;
+      // pop in on arrival
+      const k = motion ? Math.min(1, (now - s.born) / 600) : 1;
+      s.root.scale.setScalar(k < 1 ? 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2) : 1);
+      const saluting = s.saluteUntil > now;
+      s.salute.g.visible = saluting;
+      s.arms[1].g.visible = !saluting;
+      if (saluting) { s.head.rotation.set(0, 0, 0); if (s.flip) s.flip.visible = false; return; }
+      if (s.standing) {
+        s.head.rotation.x = Math.sin(p * 0.8) * 0.04 * motion;
+        s.head.rotation.y = Math.sin(p * 0.3) * 0.3 * motion;
+        return;
+      }
+      // eyes down on the page, sweeping slowly along the lines
+      s.head.rotation.x = -0.32 + Math.sin(p * 0.9) * 0.03 * motion;
+      s.head.rotation.y = Math.sin(p * 0.6) * 0.12 * motion;
+      // every 9 s the right hand turns a page
+      const cyc = (p % 9) / 9, f = motion && cyc > 0.85 ? (cyc - 0.85) / 0.15 : 0, lift = Math.sin(f * Math.PI);
+      s.flip.visible = f > 0;
+      s.flip.rotation.z = f * Math.PI;
+      s.arms[1].fore.rotation.y = lift * 0.6;
+      s.arms[1].fore.position.y = 0.81 + lift * 0.04;
+    });
+
+    // name tags follow each soldier's head (your own tag hides while you sit, it would cover the desk)
+    const cw = wrap.clientWidth, ch = wrap.clientHeight;
+    soldiers.forEach(s => {
+      if (!s.tag) return;
+      if (mode === 'seat' && s.tag.classList.contains('me')) { s.tag.hidden = true; return; }
+      s.head.getWorldPosition(tagPos); tagPos.y += 0.2;
+      tagPos.project(camera);
+      const show = tagPos.z < 1 && Math.abs(tagPos.x) < 1.1 && Math.abs(tagPos.y) < 1.1;
+      s.tag.hidden = !show;
+      if (show) s.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * cw}px, ${(-tagPos.y * 0.5 + 0.5) * ch}px) translate(-50%, -100%)`;
+    });
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
