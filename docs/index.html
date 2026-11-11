@@ -140,8 +140,9 @@
   .doing-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
   .tag .who { display: block; }
   .tag .doing {
-    display: block; margin-top: 3px; max-width: 150px;
-    font-size: 10px; font-weight: 500; opacity: 0.8;
+    display: block; margin-top: 4px; padding-top: 4px; max-width: 170px;
+    border-top: 1px solid rgba(30, 28, 14, 0.25);
+    font-size: 12px; font-weight: 600;
     overflow: hidden; text-overflow: ellipsis;
   }
   .tag .doing:empty { display: none; }
@@ -1599,16 +1600,18 @@
       s.arms[1].fore.position.y = 0.81 + lift * 0.04;
     });
 
-    // name tags follow each soldier's head (your own tag hides while you sit, it would cover the desk)
+    // name tags (with "지금 하는 일") follow each soldier's head, yours included while you sit
     const cw = wrap.clientWidth, ch = wrap.clientHeight;
     soldiers.forEach(s => {
       if (!s.tag) return;
-      if (mode === 'seat' && s.tag.classList.contains('me')) { s.tag.hidden = true; return; }
-      s.head.getWorldPosition(tagPos); tagPos.y += 0.2;
+      // seen over your own shoulder, your tag sits on top of your head instead of above it,
+      // so it does not cover the goals on your monitor
+      const ownSeated = mode === 'seat' && s.tag.classList.contains('me');
+      s.head.getWorldPosition(tagPos); tagPos.y += ownSeated ? 0.12 : 0.2;
       tagPos.project(camera);
       const show = tagPos.z < 1 && Math.abs(tagPos.x) < 1.1 && Math.abs(tagPos.y) < 1.1;
       s.tag.hidden = !show;
-      if (show) s.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * cw}px, ${(-tagPos.y * 0.5 + 0.5) * ch}px) translate(-50%, -100%)`;
+      if (show) s.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * cw}px, ${(-tagPos.y * 0.5 + 0.5) * ch}px) translate(-50%, ${ownSeated ? '0' : '-100%'})`;
     });
     controls.update();
     renderer.render(scene, camera);
