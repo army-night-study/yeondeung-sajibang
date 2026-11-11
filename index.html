@@ -113,6 +113,16 @@
   .notice.fresh { animation: notice-in 0.6s ease-out; }
   @keyframes notice-in { from { transform: translateY(-6px); opacity: 0.3; } to { transform: none; opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .notice.fresh { animation: none; } }
+  .choice {
+    flex: 1 1 100%; min-width: 0;
+    display: grid; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--alert); border-radius: 8px;
+    padding: 12px 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .choice .label { font-size: 10px; letter-spacing: 0.14em; color: var(--alert); font-weight: 600; }
+  .choice .msg { font-size: 14px; line-height: 1.45; }
+  .choice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .choice-actions button:first-child { background: var(--khaki); color: var(--khaki-ink); border-color: transparent; }
   .doing-row {
     flex: 1 1 100%; min-width: 0;
     display: flex; align-items: center; gap: 10px;
@@ -199,6 +209,11 @@
       <option value="전역 계획 세우는 중"></option>
       <option value="잠깐 휴식"></option>
     </datalist>
+  </div>
+  <div class="choice" id="choice" role="alertdialog" aria-labelledby="choiceMsg" hidden>
+    <div class="label">친구 방</div>
+    <div class="msg" id="choiceMsg"></div>
+    <div class="choice-actions" id="choiceActions"></div>
   </div>
   <div class="goals" id="goals" hidden>
     <div class="label">오늘의 목표 · 내 모니터에 표시</div>
@@ -893,7 +908,10 @@
   // Everyone is a person { id, n, seat, seatAt, saluteAt, joinedAt, isMe }: n is the 용사 number
   // taken in entry order, seat is 1..24 or null (standing in the aisle). Online, people are the
   // viewers in the same named room; offline (no room), a few simulated soldiers keep you company.
-  const HALL_CAP = 24;
+  // 24 seats per 사지방. Friends' rooms hold 12 people: on GitHub Pages everyone connects to
+  // everyone directly (WebRTC mesh), and phones stay smooth at about that size.
+  const SEATS = 24, FRIEND_CAP = 12;
+  const capacity = () => (privateCode ? FRIEND_CAP : SEATS);
   const tagLayer = document.getElementById('tags');
   const avatars = new Map();
   let people = [];
@@ -1022,7 +1040,7 @@
       if (p.kind !== 'viewer') return;
       if (p.sameTab) { sawMe = true; myPeer = p.peer; list.push(Object.assign({}, me, { id: p.peer })); return; }
       const pr = p.presence || {};
-      const seat = num(pr.seat, 1, HALL_CAP);
+      const seat = num(pr.seat, 1, SEATS);
       list.push({
         id: p.peer, isMe: false,
         n: Number.isInteger(pr.n) ? num(pr.n, 1, 9999) || 0 : 0,
@@ -1118,7 +1136,7 @@
       if (Number.isInteger(h) && h > 0 && h < 1000) counts[h] = (counts[h] || 0) + 1;
     });
     let h = 1;
-    while ((counts[h] || 0) >= HALL_CAP) h++;
+    while ((counts[h] || 0) >= SEATS) h++;
     enterHall(lobby, h);
   }
 
@@ -1129,24 +1147,43 @@
     me.n = 0; me.seat = null; me.joinedAt = Date.now();
     if (!privateCode) lobby.presence({ hall: h }).catch(() => {});
     publishMe();
-    room.onPeers(() => { if (hall === room) onHallChange(); });
+    room.settled = false;
+    room.onPeers(() => { if (hall === room) { if (room.settled && overflowed(lobby, room, h)) return; onHallChange(); } });
     // once the room's roster has arrived: overflow check, then take the next 용사 number
+    // (Trystero finds peers more slowly than the claude.ai room, so it gets a longer wait)
     setTimeout(() => {
       if (hall !== room) return;
-      const list = roomPeople().sort(byArrival);
-      if (list.findIndex(p => p.isMe) >= HALL_CAP) {
-        room.leave().catch(() => {});
-        say('이동', `제${h} 사지방이 가득 차서 제${h + 1} 사지방으로 이동합니다.`);
-        enterHall(lobby, h + 1);
-        return;
-      }
+      room.settled = true;
+      if (overflowed(lobby, room, h)) return;
+      const list = roomPeople();
       me.n = Math.max(0, ...list.filter(p => !p.isMe).map(p => p.n)) + 1;
       publishMe();
-      if (privateCode) say('입실', `친구 전용 제${h} 사지방에 ${label(me)}(으)로 들어왔습니다. 친구 초대 주소: ${(window.claude ? ARTIFACT_URL : location.origin + location.pathname)}#${privateCode}`);
+      if (privateCode) say('입실', `친구 전용 제${h} 사지방에 ${label(me)}(으)로 들어왔습니다 (${list.length}/${capacity()}명). 친구 초대 주소: ${inviteLink()}`);
       else say('입실', `제${h} 사지방에 ${label(me)}(으)로 들어왔습니다. 앉기를 누르거나 빈 PC석을 눌러 앉으세요.`);
       render();
-    }, 1500);
+    }, lobby.trystero ? 4000 : 1500);
     render();
+  }
+
+  // Am I past this room's capacity (by arrival order)? Public rooms move me on to the next one;
+  // a friends' room stops and lets me choose, so nobody is split from their friends without knowing.
+  function overflowed(lobby, room, h) {
+    const list = roomPeople().sort(byArrival);
+    const cap = capacity();
+    if (list.findIndex(p => p.isMe) < cap) return false;
+    hall = null;
+    room.leave().catch(() => {});
+    if (!privateCode) {
+      say('이동', `제${h} 사지방이 가득 차서 제${h + 1} 사지방으로 이동합니다.`);
+      enterHall(lobby, h + 1);
+      return true;
+    }
+    render();
+    askChoice(`친구 전용 제${h} 사지방이 가득 찼습니다 (${cap}/${cap}명).`, [
+      { label: `옆 방(제${h + 1} 사지방)으로 가기`, run: () => enterHall(lobby, h + 1) },
+      { label: '새 친구 방 만들기', run: () => newFriendRoom() },
+    ]);
+    return true;
   }
 
   function onHallChange() {
@@ -1251,7 +1288,7 @@
     $('seated').textContent = seats.filter(s => s.taken || s.mine).length;
     $('present').textContent = people.length;
     const where = (privateCode ? '친구 전용 ' : '') + `제${hallNo} 사지방`;
-    $('hallLine').textContent = online ? `${where} · 최대 ${HALL_CAP}명` : `${where} · 오프라인 체험`;
+    $('hallLine').textContent = !online ? `${where} · 오프라인 체험` : hall ? `${where} · ${people.length}/${capacity()}명` : `${where} · 입장 대기`;
     $('btnSit').textContent = me.seat ? '일어서기' : '앉기';
   }
   function say(label, msg) { $('statusLabel').textContent = label; $('statusMsg').textContent = msg; }
@@ -1406,27 +1443,53 @@
     sitAt(free[Math.floor(Math.random() * free.length)]);
   });
 
-  // 친구 부르기: make (or reuse) a private code, move into that friends-only 사지방 and copy its address
-  $('btnFriends').addEventListener('click', () => {
-    const fresh = !privateCode;
-    if (fresh) {
-      const abc = 'abcdefghijkmnpqrstuvwxyz23456789', bytes = crypto.getRandomValues(new Uint8Array(10));
-      privateCode = Array.from(bytes, b => abc[b % abc.length]).join('');
-      try { history.replaceState(null, '', '#' + privateCode); } catch (e) { /* address bar not ours (claude.ai) */ }
-    }
-    const base = window.claude ? ARTIFACT_URL : location.origin + location.pathname;
-    const link = base + '#' + privateCode;
-    const done = copied => say('친구 부르기', (copied ? '친구 전용 사지방 주소를 복사했습니다. 친구에게 보내주세요: ' : '이 주소를 친구에게 보내주세요: ') + link);
-    // copy inside the click itself (clipboard needs the gesture), fall back to showing the address
+  // ---------- 친구 부르기 ----------
+  // The friends' room address is this page plus #code. Copying happens inside the click (the
+  // clipboard needs the gesture); where it is refused, the address is shown to copy by hand.
+  function inviteLink() { return (window.claude ? ARTIFACT_URL : location.origin + location.pathname) + '#' + privateCode; }
+  function copyInvite(prefix) {
+    const link = inviteLink();
+    const done = ok => say('친구 부르기', prefix + (ok ? '주소를 복사했습니다. 친구에게 보내주세요: ' : '이 주소를 친구에게 보내주세요: ') + link);
     try { navigator.clipboard.writeText(link).then(() => done(true), () => done(false)); } catch (e) { done(false); }
-    if (fresh) {
-      if (online && lobbyRef) {
-        const old = hall; hall = null;
-        if (old) old.leave().catch(() => {});
-        if (me.seat) goOverview(true);
-        enterHall(lobbyRef, 1);
-      }
-      updateHud();
+  }
+  function askChoice(msg, options) {
+    $('choiceMsg').textContent = msg;
+    const box = $('choiceActions');
+    box.textContent = '';
+    options.forEach(o => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = o.label;
+      b.addEventListener('click', () => { $('choice').hidden = true; o.run(); });
+      box.appendChild(b);
+    });
+    $('choice').hidden = false;
+    if (box.firstChild) box.firstChild.focus();
+  }
+  // a fresh code = a new, empty friends' room; move there and copy its address
+  function newFriendRoom() {
+    const abc = 'abcdefghijkmnpqrstuvwxyz23456789', bytes = crypto.getRandomValues(new Uint8Array(10));
+    privateCode = Array.from(bytes, b => abc[b % abc.length]).join('');
+    try { history.replaceState(null, '', '#' + privateCode); } catch (e) { /* address bar not ours (claude.ai) */ }
+    $('choice').hidden = true;
+    copyInvite('새 친구 방을 만들었습니다. ');
+    if (online && lobbyRef) {
+      const old = hall; hall = null;
+      if (old) old.leave().catch(() => {});
+      if (me.seat) goOverview(true);
+      enterHall(lobbyRef, 1);
+    }
+    updateHud();
+  }
+  $('btnFriends').addEventListener('click', () => {
+    if (!privateCode) { newFriendRoom(); return; }
+    const n = people.length, cap = capacity();
+    copyInvite(`친구 전용 제${hallNo} 사지방 · 지금 ${n}/${cap}명. `);
+    // nearly full: suggest a new room before friends arrive and get split up
+    if (online && hall && n >= cap - 2) {
+      askChoice(`이 방이 거의 찼습니다 (${n}/${cap}명). 친구가 더 올 예정이면 새 친구 방을 만들어 주소를 다시 보내세요.`, [
+        { label: '새 친구 방 만들기', run: newFriendRoom },
+        { label: '이 방 그대로 쓰기', run: () => {} },
+      ]);
     }
   });
 
