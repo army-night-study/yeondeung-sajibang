@@ -3,7 +3,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gowun+Batang:wght@700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
 <style>
   /* Layout: full-bleed 3D barracks PC room, HUD strips styled like a unit notice board (olive drab + khaki stencil) */
   :root {
@@ -541,7 +541,59 @@
   };
   const LW = -W / 2 + 0.02, RW = W / 2 - 0.02, FW = D / 2 - 0.02;
 
+  // long banner on the left wall, above the posters: aged kraft paper, taped up, lit by a small warm lamp
+  async function buildBanner() {
+    const SERIF = '"Gowun Batang", "Nanum Myeongjo", "Batang", serif';
+    // the serif is only used on canvas, so ask for it explicitly before drawing
+    try { await document.fonts.load(`700 96px ${SERIF}`, '우리는 그 시절 모두 연등러 였다'); } catch (e) { /* draw with the fallback */ }
+    const t = canvasTex(2048, 184, (ctx, w, h) => {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#eadcbd'); g.addColorStop(1, '#d8c39b');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      // paper grain and two soft fold lines
+      for (let i = 0; i < 2600; i++) {
+        ctx.fillStyle = `rgba(${rand() < 0.5 ? '90,62,30' : '255,250,235'},${0.04 + rand() * 0.06})`;
+        ctx.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1);
+      }
+      [w / 3, (w * 2) / 3].forEach(x => {
+        const f = ctx.createLinearGradient(x - 10, 0, x + 10, 0);
+        f.addColorStop(0, 'rgba(90,62,30,0)'); f.addColorStop(0.5, 'rgba(90,62,30,0.12)'); f.addColorStop(1, 'rgba(255,250,235,0)');
+        ctx.fillStyle = f; ctx.fillRect(x - 10, 0, 20, h);
+      });
+      // darker, slightly burnt edges
+      const v = ctx.createRadialGradient(w / 2, h / 2, h * 0.6, w / 2, h / 2, w * 0.55);
+      v.addColorStop(0, 'rgba(70,45,20,0)'); v.addColorStop(1, 'rgba(70,45,20,0.35)');
+      ctx.fillStyle = v; ctx.fillRect(0, 0, w, h);
+      // a small crescent and star on either side
+      const moonAt = (x, y) => {
+        ctx.fillStyle = '#b8862f'; ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e3d3b0'; ctx.beginPath(); ctx.arc(x + 10, y - 7, 20, 0, Math.PI * 2); ctx.fill();
+      };
+      moonAt(150, h / 2); star(ctx, 205, h / 2 - 26, 9, '#b8862f');
+      moonAt(w - 190, h / 2); star(ctx, w - 135, h / 2 - 26, 9, '#b8862f');
+      // the line itself, in ink
+      ctx.fillStyle = '#2a2633'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `700 92px ${SERIF}`;
+      try { ctx.letterSpacing = '6px'; } catch (e) { /* older canvas: default spacing */ }
+      ctx.fillText('우리는 그 시절 모두 연등러 였다', w / 2, h / 2 + 4);
+    });
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 0.5), new THREE.MeshStandardMaterial({ map: t.tex, roughness: 0.9 }));
+    banner.position.set(-W / 2 + 0.025, 2.66, 0.2); banner.rotation.y = Math.PI / 2; room.add(banner);
+    // masking tape on the top corners
+    const tape = new THREE.MeshStandardMaterial({ color: 0xf1e6c8, roughness: 1, transparent: true, opacity: 0.85 });
+    [[-2.7, 0.35], [2.7, -0.35]].forEach(([dz, rz]) => {
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.07), tape);
+      strip.position.set(-W / 2 + 0.03, 2.9, 0.2 + dz); strip.rotation.set(0, Math.PI / 2, rz); room.add(strip);
+    });
+    // warm wash of light from a little picture lamp above it
+    const wash = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.5), new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffc887, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
+    wash.position.set(-W / 2 + 0.035, 2.68, 0.2); wash.rotation.y = Math.PI / 2; room.add(wash);
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.4, 12), new THREE.MeshStandardMaterial({ color: 0x2b2a26, roughness: 0.4, metalness: 0.5 }));
+    lamp.rotation.x = Math.PI / 2; lamp.position.set(-W / 2 + 0.09, 2.96, 0.2); room.add(lamp);
+  }
+
   function buildPosters() {
+    buildBanner();
     // name board above the windows
     poster(3.2, 0.36, new THREE.Vector3(0, 2.72, -D / 2 + 0.02), 0, (ctx, cw, ch) => {
       ctx.fillStyle = '#2f3a28'; ctx.fillRect(0, 0, cw, ch);
@@ -1107,6 +1159,8 @@
     // the claude.ai viewer provides window.claude; give it a moment to appear before deciding we are elsewhere
     for (let i = 0; i < 10 && !window.claude; i++) await new Promise(r => setTimeout(r, 150));
     if (window.claude) { try { return await window.claude.use('room'); } catch (e) { return null; } }
+    // Trystero encrypts with Web Crypto, which browsers only offer on https (or localhost)
+    if (!window.isSecureContext || !(window.crypto && crypto.subtle)) return null;
     try {
       const T = await import('https://cdn.jsdelivr.net/npm/trystero@0.26.0/+esm');
       return {
