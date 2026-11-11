@@ -113,6 +113,73 @@
   .notice.fresh { animation: notice-in 0.6s ease-out; }
   @keyframes notice-in { from { transform: translateY(-6px); opacity: 0.3; } to { transform: none; opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .notice.fresh { animation: none; } }
+  /* ---------- 연등 다이어리 ---------- */
+  .diary {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center;
+    background: rgba(4, 6, 4, 0.66);
+    padding: calc(env(safe-area-inset-top, 0px) + 16px) max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 16px) max(16px, env(safe-area-inset-left, 0px));
+  }
+  .diary-card {
+    width: 100%; max-width: 440px; max-height: 100%; overflow: auto;
+    background: #f1e8d4; color: #2a2633;
+    border-radius: 10px; padding: 18px 18px 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+  .diary-card section { display: grid; gap: 12px; }
+  .diary-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .diary-head .eyebrow { font-size: 10px; letter-spacing: 0.16em; font-weight: 600; color: #7a5a2e; }
+  .diary-head h2 { margin: 2px 0 0; font-family: "Gowun Batang", serif; font-weight: 700; font-size: 24px; line-height: 1.2; }
+  .diary-card button { color: #2a2633; background: rgba(42, 38, 51, 0.06); border: 1px solid rgba(42, 38, 51, 0.18); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .diary-card button:hover { background: rgba(42, 38, 51, 0.12); }
+  .diary-card button.primary { background: #2f3a28; color: #f1e8d4; border-color: transparent; font-weight: 600; padding: 13px 16px; font-size: 14px; }
+  .diary-card button:focus-visible { outline: 2px solid #7a5a2e; }
+  .diary-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .diary-stats div { background: rgba(122, 90, 46, 0.1); border-radius: 6px; padding: 8px 10px; }
+  .diary-stats b { display: block; font-family: "Gowun Batang", serif; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .diary-stats span { font-size: 11px; color: #6b5a3e; }
+  .diary-tip, .diary-note { margin: 0; font-size: 12px; line-height: 1.5; color: #6b5a3e; }
+  .cal-nav { display: flex; align-items: center; justify-content: space-between; }
+  .cal-nav button { padding: 6px 14px; font-size: 18px; }
+  #calMonth { font-family: "Gowun Batang", serif; font-weight: 700; font-size: 17px; }
+  .cal-week, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-week span { text-align: center; font-size: 11px; color: #6b5a3e; }
+  .cal-grid button, .cal-grid span {
+    aspect-ratio: 1; max-width: 100%; padding: 0; border-radius: 6px;
+    display: flex; align-items: flex-start; justify-content: flex-start;
+    font: 600 11px/1 var(--body); position: relative; overflow: hidden;
+  }
+  .cal-grid button { background: rgba(42, 38, 51, 0.05); border: 1px solid rgba(42, 38, 51, 0.1); padding: 4px; }
+  .cal-grid button.has { background-size: cover; background-position: center; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); border-color: transparent; }
+  .cal-grid button.has::after {
+    content: "인증"; position: absolute; right: 3px; bottom: 3px;
+    font-size: 9px; letter-spacing: 0.04em; color: #c0392b; background: rgba(255, 248, 235, 0.9);
+    border: 1.5px solid #c0392b; border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; text-shadow: none;
+    transform: rotate(-12deg);
+  }
+  .cal-grid button.today { outline: 2px solid #2f3a28; outline-offset: -2px; }
+  .cal-grid button.future { opacity: 0.35; cursor: default; }
+  .view-photo { width: 100%; border-radius: 6px; background: #ddd; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
+  .view-meta { font-size: 13px; line-height: 1.6; }
+  .view-meta .label { font-size: 10px; letter-spacing: 0.14em; font-weight: 600; color: #7a5a2e; }
+  .view-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #viewDelete.confirm { background: #c0392b; color: #fff; border-color: transparent; }
+
+  /* the red 인증 stamp that lands after an upload */
+  .stamp { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: none; }
+  .stamp-ring {
+    width: 190px; height: 190px; border-radius: 50%;
+    border: 6px double #c0392b; color: #c0392b; background: rgba(255, 248, 235, 0.92);
+    display: grid; place-items: center; align-content: center; gap: 6px; text-align: center;
+    transform: rotate(-14deg); animation: stamp-in 0.45s cubic-bezier(.2, 1.6, .4, 1) both;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  }
+  .stamp-top { font-family: var(--display); font-size: 30px; letter-spacing: 0.06em; }
+  .stamp-date { font-size: 14px; font-weight: 600; border-top: 2px solid #c0392b; border-bottom: 2px solid #c0392b; padding: 3px 10px; }
+  .stamp-bottom { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+  @keyframes stamp-in { from { transform: rotate(-14deg) scale(2.4); opacity: 0; } to { transform: rotate(-14deg) scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .stamp-ring { animation: none; } }
+
   .choice {
     flex: 1 1 100%; min-width: 0;
     display: grid; gap: 8px;
@@ -145,6 +212,8 @@
     overflow: hidden; text-overflow: ellipsis;
   }
   .tag .doing:empty { display: none; }
+  .tag .rec { display: block; margin-top: 3px; font-size: 10px; font-weight: 600; color: #7a2e1c; }
+  .tag .rec:empty { display: none; }
 
   .goals {
     flex: 1 1 100%; min-width: 0;
@@ -180,12 +249,57 @@
     /* on phones the goal panel takes the status line's place while you sit */
     .goals:not([hidden]) ~ .status { display: none; }
     .actions { width: 100%; }
-    .actions button { flex: 1; }
+    .actions button { flex: 1; min-width: 0; padding: 11px 4px; font-size: 12px; white-space: nowrap; }
   }
 </style>
 
 <div id="scene"></div>
 <div id="tags" aria-hidden="true"></div>
+
+<!-- 연등 다이어리: a photo of today's paper diary page, kept by date in this browser -->
+<div class="diary" id="diary" role="dialog" aria-modal="true" aria-labelledby="diaryTitle" hidden>
+  <div class="diary-card">
+    <section id="diaryList">
+      <div class="diary-head">
+        <div>
+          <div class="eyebrow">연등 다이어리</div>
+          <h2 id="diaryTitle">나의 기록</h2>
+        </div>
+        <button id="diaryClose" type="button">닫기</button>
+      </div>
+      <div class="diary-stats" id="diaryStats"></div>
+      <button id="diaryUpload" class="primary" type="button">오늘 다이어리 인증하기</button>
+      <p class="diary-tip">종이 다이어리에서 오늘 쓴 페이지를 펼쳐 찍어 올리세요. 새벽 6시 전에 올리면 전날 기록이 됩니다.</p>
+      <div class="cal-nav">
+        <button id="calPrev" type="button" aria-label="이전 달">‹</button>
+        <div id="calMonth"></div>
+        <button id="calNext" type="button" aria-label="다음 달">›</button>
+      </div>
+      <div class="cal-week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+      <div class="cal-grid" id="calGrid"></div>
+      <p class="diary-note">사진은 이 기기의 브라우저에만 저장되고, 다른 사람에게는 기록한 날 수만 보여요.</p>
+    </section>
+    <section id="diaryView" hidden>
+      <div class="diary-head">
+        <div>
+          <div class="eyebrow">연등 다이어리</div>
+          <h2 id="viewDate"></h2>
+        </div>
+        <button id="viewBack" type="button">달력</button>
+      </div>
+      <img id="viewPhoto" class="view-photo" alt="">
+      <div class="view-meta" id="viewMeta"></div>
+      <div class="view-actions">
+        <button id="viewReplace" type="button">다시 올리기</button>
+        <button id="viewDelete" type="button">삭제</button>
+      </div>
+    </section>
+  </div>
+</div>
+<input type="file" id="diaryFile" accept="image/*" hidden>
+<div class="stamp" id="stamp" aria-hidden="true" hidden>
+  <div class="stamp-ring"><span class="stamp-top">연등 인증</span><span class="stamp-date" id="stampDate"></span><span class="stamp-bottom">사이버지식정보방</span></div>
+</div>
 
 <header class="hud hud-top">
   <div class="brand">
@@ -247,6 +361,7 @@
     <button id="btnSalute" type="button">경례</button>
     <button id="btnSit" type="button">앉기</button>
     <button id="btnFriends" type="button">친구 부르기</button>
+    <button id="btnDiary" type="button">나의 기록</button>
     <button id="btnOverview" type="button">전체 보기</button>
   </div>
 </footer>
@@ -1065,7 +1180,7 @@
   const tagLayer = document.getElementById('tags');
   const avatars = new Map();
   let people = [];
-  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', isMe: true };
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, isMe: true };
   // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
   // Text from other viewers is untrusted: strip control/invisible characters, cap the length, render as text only.
   const cleanDoing = s => (typeof s === 'string' ? s : '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, 16);
@@ -1114,9 +1229,10 @@
         tag.className = 'tag' + (p.isMe ? ' me' : '');
         const who = document.createElement('span'); who.className = 'who';
         const doing = document.createElement('span'); doing.className = 'doing';
-        tag.append(who, doing);
+        const rec = document.createElement('span'); rec.className = 'rec';
+        tag.append(who, doing, rec);
         tagLayer.appendChild(tag);
-        a = { tag, who, doing, where: null, sol: null, saluteAt: p.saluteAt, named: !!p.n, name: '' };
+        a = { tag, who, doing, rec, where: null, sol: null, saluteAt: p.saluteAt, named: !!p.n, name: '' };
         avatars.set(p.id, a);
       }
       if (a.where !== where) {
@@ -1144,6 +1260,9 @@
       if (a.who.textContent !== a.name) a.who.textContent = a.name;
       const doing = cleanDoing(p.doing);
       if (a.doing.textContent !== doing) a.doing.textContent = doing;
+      // only the number of recorded days travels to others, never the photos
+      const rec = p.days ? `연등 기록 ${p.days}일` : '';
+      if (a.rec.textContent !== rec) a.rec.textContent = rec;
     });
     avatars.forEach((a, id) => {
       if (seen.has(id)) return;
@@ -1151,6 +1270,8 @@
       removeSoldier(a.sol); a.tag.remove(); avatars.delete(id);
     });
     updateHud();
+    // my diary stack follows me to whichever desk I sit at
+    if (me.seat !== deskShown.seat || diaryVersion !== deskShown.version) updateDesk3D();
   }
 
   function render() {
@@ -1165,7 +1286,7 @@
     const add = seatNo => {
       if (me.seat === seatNo || npcs.some(p => p.seat === seatNo)) return;
       npcs.push({ id: 'npc' + next, n: next++, seat: seatNo, seatAt: Date.now(), saluteAt: 0, joinedAt: Date.now(), isMe: false,
-        doing: NPC_DOING[Math.floor(Math.random() * NPC_DOING.length)] });
+        doing: NPC_DOING[Math.floor(Math.random() * NPC_DOING.length)], days: Math.floor(Math.random() * 30) });
       render();
     };
     [...takenSet].sort(() => rand() - 0.5).forEach((s, i) => setTimeout(() => add(s), 700 + i * 500));
@@ -1199,6 +1320,7 @@
         saluteAt: num(pr.saluteAt, 0, 1e15) || 0,
         joinedAt: num(pr.joinedAt, 0, 1e15) || 1e15,
         doing: cleanDoing(pr.doing),
+        days: Number.isInteger(pr.days) ? num(pr.days, 0, 9999) || 0 : 0,
       });
     });
     if (!sawMe) list.push(me);
@@ -1206,7 +1328,7 @@
   }
   function publishMe() {
     if (!online || !hall) return;
-    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing }).catch(() => {});
+    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days }).catch(() => {});
   }
   const byArrival = (a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1);
 
@@ -1451,6 +1573,246 @@
     say('오늘의 목표', '목표를 고친 뒤 완료를 누르세요.');
   });
   setGoalsLocked(goalsLocked);
+
+  // ---------- 연등 다이어리 ----------
+  // Each day gets one photo of the paper diary page, saved in this browser (IndexedDB) with that
+  // day's goals. Records stack up as diaries on your desk and as stamped days on a calendar.
+  // Photos never leave the device; only the count of recorded days goes out with your presence.
+  const DiaryDB = (() => {
+    let opening = null;
+    const open = () => opening || (opening = new Promise((res, rej) => {
+      const r = indexedDB.open('saji-diary', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('entries', { keyPath: 'date' });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const t = db.transaction('entries', mode), req = fn(t.objectStore('entries'));
+        t.oncomplete = () => res(req && req.result);
+        t.onerror = () => rej(t.error);
+        t.onabort = () => rej(t.error);
+      });
+    };
+    return {
+      all: () => run('readonly', s => s.getAll()),
+      put: e => run('readwrite', s => s.put(e)),
+      remove: date => run('readwrite', s => s.delete(date)),
+    };
+  })();
+  const entries = new Map();   // 'YYYY-MM-DD' -> { date, photo: Blob, thumb: Blob, goals, doing, savedAt }
+  let diaryVersion = 0, diaryStorageOk = true;
+  const deskShown = { seat: undefined, version: -1 };
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  // a night's study ends after midnight, so uploads before 06:00 count for the previous day
+  const recordDay = () => { const d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); return ymd(d); };
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  const prettyDate = s => { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); return `${y}년 ${m}월 ${d}일 (${WEEK[dt.getDay()]})`; };
+  function streak() {
+    const d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+    if (!entries.has(ymd(d))) d.setDate(d.getDate() - 1);   // today not written yet: the run can still end yesterday
+    let n = 0;
+    while (entries.has(ymd(d))) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  }
+  function diaryChanged() {
+    diaryVersion++;
+    me.days = entries.size;
+    publishMe(); render();
+    if (!$('diary').hidden) renderCalendar();
+  }
+
+  // shrink the photo in the browser before saving: long side 1600px (and a 320px thumbnail)
+  function compressImage(file, max, quality) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * s)); c.height = Math.max(1, Math.round(img.naturalHeight * s));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
+      img.src = url;
+    });
+  }
+
+  let uploadFor = null;   // the date a chosen photo will be saved under
+  function pickPhoto(date) { uploadFor = date; $('diaryFile').value = ''; $('diaryFile').click(); }
+  $('diaryFile').addEventListener('change', async () => {
+    const file = $('diaryFile').files && $('diaryFile').files[0];
+    const date = uploadFor || recordDay();
+    uploadFor = null;
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { say('연등 다이어리', '사진 파일만 올릴 수 있어요.'); return; }
+    $('diaryUpload').disabled = true; $('diaryUpload').textContent = '저장하는 중…';
+    try {
+      const [photo, thumb] = await Promise.all([compressImage(file, 1600, 0.82), compressImage(file, 320, 0.8)]);
+      const entry = { date, photo, thumb, goals: goals.map(g => ({ text: g.text, done: g.done })), doing: me.doing, savedAt: Date.now() };
+      if (diaryStorageOk) await DiaryDB.put(entry);
+      entries.set(date, entry);
+      diaryChanged();
+      showStamp(date);
+      say('연등 다이어리', `${prettyDate(date)} 기록을 저장했습니다. 지금까지 ${entries.size}일 기록했어요.`);
+      showList();
+    } catch (e) {
+      say('연등 다이어리', '사진을 저장하지 못했어요. 다른 사진으로 다시 시도하거나, 저장 공간을 확인해 주세요.');
+    } finally {
+      $('diaryUpload').disabled = false; renderCalendar();
+    }
+  });
+
+  function showStamp(date) {
+    $('stampDate').textContent = date.replace(/-/g, '.');
+    const s = $('stamp'); s.hidden = false;
+    const ring = s.firstElementChild; ring.style.animation = 'none'; void ring.offsetWidth; ring.style.animation = '';
+    clearTimeout(showStamp.t); showStamp.t = setTimeout(() => (s.hidden = true), 1800);
+  }
+
+  // calendar of the month, with each recorded day showing its photo and a red 인증 mark
+  let calMonth = (() => { const d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); return new Date(d.getFullYear(), d.getMonth(), 1); })();
+  let calUrls = [];
+  function renderCalendar() {
+    calUrls.forEach(u => URL.revokeObjectURL(u)); calUrls = [];
+    const today = recordDay(), y = calMonth.getFullYear(), m = calMonth.getMonth();
+    $('calMonth').textContent = `${y}년 ${m + 1}월`;
+    const monthCount = [...entries.keys()].filter(k => k.startsWith(`${y}-${pad(m + 1)}-`)).length;
+    $('diaryStats').innerHTML = '';
+    [[entries.size, '총 기록일'], [streak(), '연속 기록'], [monthCount, `${m + 1}월 기록`]].forEach(([v, l]) => {
+      const box = document.createElement('div');
+      const b = document.createElement('b'); b.textContent = v + '일';
+      const s = document.createElement('span'); s.textContent = l;
+      box.append(b, s); $('diaryStats').appendChild(box);
+    });
+    $('diaryUpload').textContent = entries.has(today) ? '오늘 기록 다시 올리기' : '오늘 다이어리 인증하기';
+    const grid = $('calGrid'); grid.textContent = '';
+    for (let i = 0; i < new Date(y, m, 1).getDay(); i++) grid.appendChild(document.createElement('span'));
+    const days = new Date(y, m + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      const key = `${y}-${pad(m + 1)}-${pad(d)}`, e = entries.get(key);
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = d;
+      if (e) {
+        const u = URL.createObjectURL(e.thumb); calUrls.push(u);
+        b.classList.add('has'); b.style.backgroundImage = `url("${u}")`;
+        b.setAttribute('aria-label', `${prettyDate(key)} 기록 보기`);
+        b.addEventListener('click', () => showView(key));
+      } else if (key === today) {
+        b.setAttribute('aria-label', '오늘 다이어리 인증하기');
+        b.addEventListener('click', () => pickPhoto(today));
+      } else if (key > today) {
+        b.classList.add('future'); b.disabled = true;
+      } else {
+        b.setAttribute('aria-label', `${prettyDate(key)} 기록 없음`);
+        b.addEventListener('click', () => say('연등 다이어리', `${prettyDate(key)}에는 기록이 없어요. 인증은 그날(다음 날 새벽 6시 전까지)에만 할 수 있어요.`));
+      }
+      if (key === today) b.classList.add('today');
+      grid.appendChild(b);
+    }
+  }
+
+  let viewUrl = null, viewDateKey = null;
+  function showView(key) {
+    const e = entries.get(key); if (!e) return;
+    viewDateKey = key;
+    if (viewUrl) URL.revokeObjectURL(viewUrl);
+    viewUrl = URL.createObjectURL(e.photo);
+    $('viewPhoto').src = viewUrl; $('viewPhoto').alt = `${prettyDate(key)} 다이어리 사진`;
+    $('viewDate').textContent = prettyDate(key);
+    const meta = $('viewMeta'); meta.textContent = '';
+    const goalsDone = (e.goals || []).filter(g => g.text);
+    if (goalsDone.length) {
+      const l = document.createElement('div'); l.className = 'label'; l.textContent = '그날의 목표'; meta.appendChild(l);
+      goalsDone.forEach(g => { const r = document.createElement('div'); r.textContent = (g.done ? '☑ ' : '☐ ') + g.text; meta.appendChild(r); });
+    }
+    if (e.doing) { const r = document.createElement('div'); r.textContent = '지금 하는 일: ' + e.doing; meta.appendChild(r); }
+    const t = new Date(e.savedAt); const r = document.createElement('div');
+    r.textContent = `인증 ${pad(t.getHours())}:${pad(t.getMinutes())}`; r.style.color = '#6b5a3e'; meta.appendChild(r);
+    // re-uploading is only for the day it belongs to
+    $('viewReplace').hidden = key !== recordDay();
+    $('viewDelete').classList.remove('confirm'); $('viewDelete').textContent = '삭제';
+    $('diaryList').hidden = true; $('diaryView').hidden = false;
+  }
+  function showList() {
+    $('diaryView').hidden = true; $('diaryList').hidden = false;
+    if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
+  }
+  $('viewBack').addEventListener('click', showList);
+  $('viewReplace').addEventListener('click', () => pickPhoto(viewDateKey));
+  // delete asks once in place: the first press arms the button, a second press within 3 s deletes
+  $('viewDelete').addEventListener('click', async () => {
+    const btn = $('viewDelete');
+    if (!btn.classList.contains('confirm')) {
+      btn.classList.add('confirm'); btn.textContent = '한 번 더 누르면 삭제';
+      clearTimeout(btn.t); btn.t = setTimeout(() => { btn.classList.remove('confirm'); btn.textContent = '삭제'; }, 3000);
+      return;
+    }
+    const key = viewDateKey;
+    try { if (diaryStorageOk) await DiaryDB.remove(key); } catch (e) { /* removed from view below anyway */ }
+    entries.delete(key);
+    diaryChanged(); showList();
+    say('연등 다이어리', `${prettyDate(key)} 기록을 삭제했습니다.`);
+  });
+
+  function openDiary() { $('diary').hidden = false; showList(); renderCalendar(); $('diaryClose').focus(); }
+  function closeDiary() { $('diary').hidden = true; showList(); calUrls.forEach(u => URL.revokeObjectURL(u)); calUrls = []; }
+  $('btnDiary').addEventListener('click', openDiary);
+  $('diaryClose').addEventListener('click', closeDiary);
+  $('diaryUpload').addEventListener('click', () => pickPhoto(recordDay()));
+  $('calPrev').addEventListener('click', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCalendar(); });
+  $('calNext').addEventListener('click', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); });
+  $('diary').addEventListener('click', e => { if (e.target === $('diary')) closeDiary(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('diary').hidden) closeDiary(); });
+
+  DiaryDB.all().then(list => {
+    (list || []).forEach(e => { if (e && e.date && e.photo && e.thumb) entries.set(e.date, e); });
+    diaryChanged();
+  }).catch(() => { diaryStorageOk = false; });
+
+  // ---------- my diaries on the desk ----------
+  // While I sit, my recorded days stand as a pile of green diaries beside the monitor,
+  // and the newest page is pinned to the partition as a polaroid.
+  const diaryCover = new THREE.MeshStandardMaterial({ color: 0x2f4a32, roughness: 0.8 });
+  const diaryBand = new THREE.MeshStandardMaterial({ color: 0xc9a24a, roughness: 0.6 });
+  let deskGroup = null;
+  function updateDesk3D() {
+    deskShown.seat = me.seat; deskShown.version = diaryVersion;
+    if (deskGroup) { deskGroup.parent && deskGroup.parent.remove(deskGroup); deskGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.map) { o.material.map.dispose(); o.material.dispose(); } } }); deskGroup = null; }
+    if (!me.seat || !entries.size) return;
+    const seat = seats[me.seat - 1];
+    deskGroup = new THREE.Group(); seat.group.add(deskGroup);
+    const pile = new THREE.Group(); deskGroup.add(pile);
+    const n = Math.min(entries.size, 30);
+    for (let i = 0; i < n; i++) {
+      const y = 0.768 + i * 0.014, turn = Math.sin(i * 2.3) * 0.12;
+      const cover = box(0.15, 0.012, 0.2, diaryCover); cover.position.set(0.37, y, 0.17); cover.rotation.y = turn; pile.add(cover);
+      const band = box(0.152, 0.013, 0.02, diaryBand); band.position.set(0.37, y, 0.17); band.rotation.y = turn; band.translateZ(0.06); pile.add(band);
+    }
+    flatten(pile);
+    // newest page as a polaroid on the partition, left of the monitor
+    const latest = [...entries.values()].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const url = URL.createObjectURL(latest.thumb), img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      if (!deskGroup || deskShown.version !== diaryVersion) return;
+      const t = canvasTex(256, 300, (ctx, w, h) => {
+        ctx.fillStyle = '#fbf8f0'; ctx.fillRect(0, 0, w, h);
+        const pw = w - 28, ph = 210, s = Math.max(pw / img.width, ph / img.height);
+        ctx.save(); ctx.beginPath(); ctx.rect(14, 14, pw, ph); ctx.clip();
+        ctx.drawImage(img, 14 + (pw - img.width * s) / 2, 14 + (ph - img.height * s) / 2, img.width * s, img.height * s);
+        ctx.restore();
+        ctx.fillStyle = '#2a2633'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = `700 26px "Gowun Batang", serif`; ctx.fillText(latest.date.slice(5).replace('-', '.') + ' 연등', w / 2, 256);
+        ctx.font = `600 16px ${BODY}`; ctx.fillStyle = '#c0392b'; ctx.fillText(`기록 ${entries.size}일째`, w / 2, 284);
+      });
+      const pol = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.176), new THREE.MeshStandardMaterial({ map: t.tex, roughness: 0.85 }));
+      pol.position.set(-0.39, 1.0, -0.277); pol.rotation.z = 0.06; deskGroup.add(pol);
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }
 
   {
     const input = $('doingInput');
