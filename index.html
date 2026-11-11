@@ -256,7 +256,12 @@
   // ---------- renderer / camera ----------
   const wrap = document.getElementById('scene');
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // resolution adapts to the device: phones start at 1.5x at most, and the loop below steps it
+  // down (or back up) by measured frame time, so slow phones stay smooth instead of stuttering
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const maxDpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+  let dpr = maxDpr;
+  renderer.setPixelRatio(dpr);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
@@ -688,9 +693,55 @@
   const lampFill = islandZ.map(z => {
     const l = new THREE.PointLight(0xffe0b0, 0.45, 6.5, 1.2); l.position.set(0, 1.15, z); scene.add(l); return l;
   });
-  const screenFill = islandZ.map(z => {
-    const l = new THREE.PointLight(0x8fb4ff, 0.3, 4.5, 1.4); l.position.set(0, 1.0, z); scene.add(l); return l;
-  });
+
+  // ---------- static batching ----------
+  // Phones choke on draw calls far more than on triangles, so meshes that never move relative to
+  // their group are merged: plain (untextured, opaque, non-emissive) materials collapse into one
+  // vertex-coloured mesh, everything else is merged per material.
+  const vcMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 });
+  const plainKey = m => (m.isMeshStandardMaterial && !m.map && !m.transparent && m.side === THREE.FrontSide
+    && m.metalness < 0.3 && m.emissive.getHex() === 0 ? 'vc' : m.uuid);
+  function mergeGeoms(list, vc) {
+    let nv = 0, ni = 0;
+    list.forEach(({ geo }) => { nv += geo.attributes.position.count; ni += geo.index ? geo.index.count : geo.attributes.position.count; });
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2);
+    const col = vc ? new Float32Array(nv * 3) : null, idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+    let vo = 0, io = 0;
+    list.forEach(({ geo, mat }) => {
+      const n = geo.attributes.position.count;
+      pos.set(geo.attributes.position.array, vo * 3);
+      if (geo.attributes.normal) nor.set(geo.attributes.normal.array, vo * 3);
+      if (geo.attributes.uv) uv.set(geo.attributes.uv.array, vo * 2);
+      if (col) for (let i = 0; i < n; i++) { col[(vo + i) * 3] = mat.color.r; col[(vo + i) * 3 + 1] = mat.color.g; col[(vo + i) * 3 + 2] = mat.color.b; }
+      if (geo.index) { const a = geo.index.array; for (let i = 0; i < a.length; i++) idx[io + i] = a[i] + vo; io += a.length; }
+      else { for (let i = 0; i < n; i++) idx[io + i] = vo + i; io += n; }
+      vo += n;
+      geo.dispose();
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    if (col) g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeBoundingSphere();
+    return g;
+  }
+  // items: [{ geo (already in parent space), mat }]
+  function mergeInto(parent, items) {
+    const buckets = new Map();
+    items.forEach(it => { const k = plainKey(it.mat); if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(it); });
+    buckets.forEach((list, k) => parent.add(new THREE.Mesh(mergeGeoms(list, k === 'vc'), k === 'vc' ? vcMat : list[0].mat)));
+  }
+  // merge a group's own meshes in its local space, child groups first (they may animate, so they stay groups)
+  function flatten(group) {
+    group.children.slice().forEach(c => { if (!c.isMesh && c.children.length) flatten(c); });
+    const meshes = group.children.filter(c => c.isMesh && !c.userData.keep);
+    if (meshes.length < 2) return;
+    const items = meshes.map(m => { m.updateMatrix(); const geo = m.geometry.clone().applyMatrix4(m.matrix); m.geometry.dispose(); return { geo, mat: m.material }; });
+    meshes.forEach(m => group.remove(m));
+    mergeInto(group, items);
+  }
 
   // ---------- monitor screens ----------
   function screenTex(kind) {
@@ -757,13 +808,14 @@
     collar: new THREE.MeshStandardMaterial({ color: 0x2c2d2f, roughness: 0.8, side: THREE.DoubleSide }),
     cuff: new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.9 }),
     pants: new THREE.MeshStandardMaterial({ color: 0x333436, roughness: 0.75 }),
-    green: new THREE.MeshStandardMaterial({ color: 0x2fae1f, roughness: 0.55, emissive: 0x1f7a12, emissiveIntensity: 0.35 }),
+    green: new THREE.MeshStandardMaterial({ color: 0x3cc426, roughness: 0.55 }),
     black: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7 }),
-    zip: new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.4, metalness: 0.3 }),
+    zip: new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.4 }),
     badge: new THREE.MeshStandardMaterial({ map: patchTex, roughness: 0.8 }),
     shoe: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }),
-    eye: new THREE.MeshBasicMaterial({ color: 0x1a1512 }),
-    blush: new THREE.MeshBasicMaterial({ color: 0xf2a0a0, transparent: true, opacity: 0.75 }),
+    eye: new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.3 }),
+    shine: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }),
+    blush: new THREE.MeshStandardMaterial({ color: 0xf4b0a6, roughness: 0.8 }),
     patch: new THREE.MeshStandardMaterial({ color: 0x1d2117, roughness: 0.8 }),
     glasses: new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.4 }),
     leaf: new THREE.MeshStandardMaterial({ color: 0xf6f2e6, roughness: 0.9, side: THREE.DoubleSide }),
@@ -869,7 +921,7 @@
     [-1, 1].forEach(k => {
       const ear = sph(0.035, skin, 10, 8); ear.scale.set(0.6, 1, 0.8); ear.position.set(k * 0.155, -0.01, 0.01); head.add(ear);
       const eye = sph(0.019, SM.eye, 10, 8); eye.scale.set(1, 1.25, 0.6); eye.position.set(k * 0.055, -0.01, -0.145); head.add(eye);
-      const shine = sph(0.006, new THREE.MeshBasicMaterial({ color: 0xffffff }), 6, 6); shine.position.set(k * 0.055 + 0.006, -0.002, -0.157); head.add(shine);
+      const shine = sph(0.006, SM.shine, 6, 6); shine.position.set(k * 0.055 + 0.006, -0.002, -0.157); head.add(shine);
       const blush = sph(0.026, SM.blush, 10, 8); blush.scale.set(1.2, 0.6, 0.3); blush.position.set(k * 0.093, -0.05, -0.125); head.add(blush);
     });
     const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.004, 6, 12, Math.PI), SM.eye);
@@ -881,6 +933,7 @@
 
     const sol = { root: s, head, arms, salute, flip, standing, phase: rand() * 100, born: performance.now(), saluteUntil: 0 };
     if (!reduceMotion) s.scale.setScalar(0.001);
+    flatten(s);   // ~150 parts become about a dozen draw calls
     soldiers.push(sol);
     return sol;
   }
@@ -899,8 +952,7 @@
     const lip = box(1.0, 0.02, 0.1, M.panelDark); lip.position.set(0, 1.2, -0.24); g.add(lip);
     const led = box(0.82, 0.012, 0.03, ledMat); led.position.set(0, 1.184, -0.22); g.add(led);
 
-    const deskGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.6),
-      new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const deskGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.6), deskGlowMat);
     deskGlow.rotation.x = -Math.PI / 2; deskGlow.position.set(0, 0.762, -0.04); g.add(deskGlow);
 
     // PC: monitor, keyboard, mouse, tower under the desk
@@ -908,11 +960,11 @@
     const foot = box(0.18, 0.012, 0.12, M.plastic); foot.position.set(0, 0.766, -0.2); g.add(foot);
     const bezel = box(0.54, 0.33, 0.025, M.plastic); bezel.position.set(0, 1.0, -0.2); g.add(bezel);
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.51, 0.3), new THREE.MeshBasicMaterial({ color: 0x0d1610 }));
-    scr.position.set(0, 1.0, -0.186); g.add(scr);
-    const kb = box(0.38, 0.015, 0.12, M.plasticLight); kb.position.set(-0.02, 0.768, 0.04); g.add(kb);
+    scr.position.set(0, 1.0, -0.186); scr.userData.keep = true; g.add(scr);
+    const kb = box(0.38, 0.015, 0.12, M.plasticLight); kb.position.set(-0.02, 0.768, 0.04); kb.userData.keep = true; g.add(kb);
     const mouse = box(0.045, 0.02, 0.075, M.plasticLight); mouse.position.set(0.27, 0.77, 0.05); g.add(mouse);
     const tower = box(0.18, 0.4, 0.42, M.plastic); tower.position.set(0.3, 0.2, -0.05); g.add(tower);
-    const pled = box(0.01, 0.01, 0.005, new THREE.MeshBasicMaterial({ color: 0x5bd16a })); pled.position.set(0.3, 0.36, 0.163); g.add(pled);
+    const pled = box(0.01, 0.01, 0.005, pledMat); pled.position.set(0.3, 0.36, 0.163); g.add(pled);
 
     // a couple of study books lying flat by the monitor
     for (let i = 0, by = 0.767; i < 1 + Math.floor(rand() * 3); i++) {
@@ -922,7 +974,7 @@
 
     const plate = canvasTex(128, 48, () => {});
     const plateMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.056), new THREE.MeshStandardMaterial({ map: plate.tex, roughness: 0.6, emissive: 0xffffff, emissiveMap: plate.tex, emissiveIntensity: 0.25 }));
-    plateMesh.position.set(0.36, 1.25, -0.278); g.add(plateMesh);
+    plateMesh.position.set(0.36, 1.25, -0.278); plateMesh.userData.keep = true; g.add(plateMesh);
 
     // chair
     const chair = new THREE.Group(); chair.position.set(0, 0, 0.56); g.add(chair);
@@ -937,9 +989,15 @@
     chair.rotation.y = (rand() - 0.5) * 0.3;
 
     const seat = { no, group: g, chair, kb, plate, screen: scr, taken, mine: false, name: null };
-    g.traverse(o => { if (o.isMesh) { o.userData.seat = seat; pickables.push(o); } });
+    // one invisible box per seat for tapping (the visible parts get merged across seats below)
+    const hit = new THREE.Mesh(hitGeo, hitMat);
+    hit.position.set(0, 0.62, 0.3); hit.visible = false; hit.userData.keep = true; hit.userData.seat = seat;
+    g.add(hit); pickables.push(hit);
     seats.push(seat);
   }
+  const deskGlowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
+  const pledMat = new THREE.MeshBasicMaterial({ color: 0x5bd16a });
+  const hitGeo = new THREE.BoxGeometry(1.0, 1.25, 1.25), hitMat = new THREE.MeshBasicMaterial();
 
   const takenSet = new Set([2, 5, 8, 9, 13, 16, 17, 20, 23]);
   let no = 1;
@@ -948,9 +1006,25 @@
     for (let i = 0; i < 6; i++, no++) makeSeat(no, (i - 2.5) * 1.05, zc - 0.3, Math.PI, false);
     for (let i = 0; i < 6; i++, no++) makeSeat(no, (2.5 - i) * 1.05, zc + 0.3, 0, false);
   });
-  islandZ.forEach(zc => [-1, 1].forEach(s => {
-    const cap = box(0.04, 1.25, 1.24, M.panelDark); cap.position.set(s * (3 * 1.05 + 0.02), 0.625, zc); scene.add(cap);
-  }));
+  // bake every carrel's fixed parts (and the end caps) into world space: a handful of draw calls
+  // for all 24 seats. Chairs, keyboards, screens, number plates and hit boxes stay separate.
+  {
+    const items = [];
+    const bake = m => { m.updateMatrixWorld(true); items.push({ geo: m.geometry.clone().applyMatrix4(m.matrixWorld), mat: m.material }); m.geometry.dispose(); m.parent.remove(m); };
+    seats.forEach(seat => {
+      seat.group.updateMatrixWorld(true);
+      seat.group.children.filter(c => c.isMesh && !c.userData.keep).forEach(bake);
+      flatten(seat.chair);
+    });
+    islandZ.forEach(zc => [-1, 1].forEach(s => {
+      const cap = box(0.04, 1.25, 1.24, M.panelDark); cap.position.set(s * (3 * 1.05 + 0.02), 0.625, zc); scene.add(cap); bake(cap);
+    }));
+    const carrels = new THREE.Group(); scene.add(carrels);
+    mergeInto(carrels, items);
+    // the room shell (walls, windows, bars, frames, ceiling panels) never moves either; the clock redraws, so it stays
+    clockMesh.userData.keep = true;
+    flatten(room);
+  }
 
   function setScreen(seat) {
     const tex = seat.mine ? screens.mine : seat.taken ? seat.busyTex : screens.login[seat.no % screens.login.length];
@@ -1564,13 +1638,27 @@
   controls.minDistance = 2; controls.maxDistance = 20;
   flyTo(start.pos, start.target);
 
-  const tagPos = new THREE.Vector3();  const ease = k => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+  const tagPos = new THREE.Vector3();
+  let lastNow = 0, perfAcc = 0, perfFrames = 0;
+  // a hidden tab pauses rAF; don't count that gap as a slow frame
+  document.addEventListener('visibilitychange', () => { lastNow = 0; perfAcc = 0; perfFrames = 0; });  const ease = k => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
   function loop(now) {
     if (fly) {
       const k = Math.min(1, (now - fly.start) / fly.dur), e = ease(k);
       camera.position.lerpVectors(fly.p0, fly.p1, e);
       controls.target.lerpVectors(fly.t0, fly.t1, e);
       if (k >= 1) fly = null;
+    }
+
+    // frame-time watchdog: every 2 s, average frame time picks the pixel ratio
+    // (over ~24 ms = under ~40 fps: step down; under ~13 ms with room to grow: step back up)
+    if (lastNow) { perfAcc += now - lastNow; perfFrames++; }
+    lastNow = now;
+    if (perfAcc > 2000 && !document.hidden) {
+      const avg = perfAcc / perfFrames;
+      const next = avg > 24 ? Math.max(0.75, dpr - 0.25) : avg < 13 ? Math.min(maxDpr, dpr + 0.25) : dpr;
+      if (next !== dpr) { dpr = next; renderer.setPixelRatio(dpr); resize(); }
+      perfAcc = 0; perfFrames = 0;
     }
 
     const t = now * 0.001, motion = reduceMotion ? 0 : 1;
