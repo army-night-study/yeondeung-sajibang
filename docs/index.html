@@ -204,6 +204,24 @@
     background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px;
   }
   .doing-row input::placeholder { color: var(--muted); }
+  .doing-row .name-btn {
+    flex: 0 1 auto; min-width: 0; max-width: 40%; padding: 6px 9px; font-size: 12px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: var(--khaki); color: var(--khaki-ink); border-color: transparent;
+  }
+  .name-edit {
+    flex: 1 1 100%; min-width: 0; display: grid; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--khaki); border-radius: 8px;
+    padding: 12px 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .name-edit .label { font-size: 10px; letter-spacing: 0.14em; color: var(--khaki); font-weight: 600; }
+  .name-edit input {
+    font: 16px/1.2 var(--body); color: var(--paper);
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  }
+  .name-edit input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
+  .name-hint { font-size: 12px; color: var(--muted); }
+  .name-hint.bad { color: var(--alert); }
   .doing-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
   .tag .who { display: block; }
   .tag .doing {
@@ -331,7 +349,18 @@
 </header>
 
 <footer class="hud hud-bottom">
+  <div class="name-edit" id="nameEdit" role="dialog" aria-labelledby="nameEditLabel" hidden>
+    <label class="label" id="nameEditLabel" for="nameInput">닉네임 바꾸기 · 최대 8자</label>
+    <input type="text" id="nameInput" maxlength="8" autocomplete="off" enterkeyhint="done" placeholder="예: 연등왕">
+    <div class="name-hint" id="nameHint">비워 두면 들어온 순서대로 용사 번호가 붙어요.</div>
+    <div class="choice-actions">
+      <button id="nameSave" type="button">저장</button>
+      <button id="nameReset" type="button">기본 이름</button>
+      <button id="nameCancel" type="button">취소</button>
+    </div>
+  </div>
   <div class="doing-row">
+    <button id="nameBtn" class="name-btn" type="button" aria-label="닉네임 바꾸기"><span id="nameBtnText">용사</span> ✎</button>
     <label for="doingInput">지금 하는 일</label>
     <input type="text" id="doingInput" list="doingPresets" maxlength="16" placeholder="예: 토익 단어 암기" autocomplete="off" enterkeyhint="done">
     <datalist id="doingPresets">
@@ -1224,7 +1253,14 @@
   const NPC_DOING = ['인강 수강 중', '자격증 공부 중', '토익 단어 암기', '독서 중', '전역 계획 세우는 중', '부모님께 편지 쓰는 중', '한국사 기출 풀이', ''];
   let online = false, hall = null, hallNo = 1, myPeer = null;
   let npcs = [];
-  const label = p => '용사' + (p.n || '') + (p.isMe ? ' (나)' : '');
+  // 닉네임: optional, up to 8 characters; without one you are 용사N in order of arrival.
+  // "용사+number" is reserved so nobody can pose as another 용사's number.
+  const cleanNick = s => {
+    const v = cleanDoing(s).replace(/\s+/g, ' ').slice(0, 8).trim();
+    return /^용사\s*\d*$/.test(v) || /\(나\)/.test(v) ? '' : v;
+  };
+  try { me.nick = cleanNick(localStorage.getItem('saji-nick')); } catch (e) { me.nick = ''; }
+  const label = p => (p.nick || '용사' + (p.n || '')) + (p.isMe ? ' (나)' : '');
 
   // two people on one seat: the earlier seatAt keeps it
   function seatOwners(list) {
@@ -1243,8 +1279,12 @@
     seats.forEach(seat => {
       const p = owners.get(seat.no) || null;
       const taken = !!p && !p.isMe, mine = !!p && p.isMe, ownerId = p ? p.id : null;
-      seat.name = p ? label(p) : null;
-      if (seat.taken === taken && seat.mine === mine && seat.owner === ownerId) return;
+      const name = p ? label(p) : null, renamed = seat.name !== name;
+      seat.name = name;
+      if (seat.taken === taken && seat.mine === mine && seat.owner === ownerId) {
+        if (renamed && seat.busyTex) { drawPlate(seat); setScreen(seat); }   // a nickname changed
+        return;
+      }
       seat.taken = taken; seat.mine = mine; seat.owner = ownerId;
       // pull the chair in and push the keyboard back so the book has room
       seat.chair.position.z = p ? 0.42 : 0.56; seat.chair.rotation.y = 0;
@@ -1291,6 +1331,10 @@
         if (!p.isMe && p.n) say('경례', `${label(p)}이(가) 경례했습니다. 충성!`);
       }
       if (p.n && !a.named && !p.isMe) say('입실', `${label(p)}이(가) 들어왔습니다.`);
+      if (!p.isMe && a.named && p.n && (p.nick || '') !== (a.nick || '')) {
+        say('이름', p.nick ? `${a.name}이(가) 닉네임을 ${p.nick}(으)로 바꿨습니다.` : `${a.name}이(가) 기본 이름 용사${p.n}(으)로 돌아왔습니다.`);
+      }
+      a.nick = p.nick || '';
       a.named = !!p.n;
       a.name = label(p);
       if (a.who.textContent !== a.name) a.who.textContent = a.name;
@@ -1363,6 +1407,7 @@
         doing: cleanDoing(pr.doing),
         days: Number.isInteger(pr.days) ? num(pr.days, 0, 9999) || 0 : 0,
         gen: pr.gen === 1,
+        nick: cleanNick(pr.nick),
       });
     });
     if (!sawMe) list.push(me);
@@ -1370,7 +1415,7 @@
   }
   function publishMe() {
     if (!online || !hall) return;
-    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0 }).catch(() => {});
+    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0, nick: me.nick }).catch(() => {});
   }
   const byArrival = (a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1);
 
@@ -1951,7 +1996,43 @@
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { commit(); input.blur(); } });
   }
 
+  // 닉네임 바꾸기: the button in the bottom row shows my current name
+  {
+    const box = $('nameEdit'), input = $('nameInput'), hint = $('nameHint');
+    const open = () => {
+      input.value = me.nick; hint.classList.remove('bad');
+      hint.textContent = '비워 두면 들어온 순서대로 용사 번호가 붙어요.';
+      box.hidden = false; input.focus(); input.select();
+    };
+    const close = () => { box.hidden = true; $('nameBtn').focus(); };
+    const apply = nick => {
+      me.nick = nick;
+      try { if (nick) localStorage.setItem('saji-nick', nick); else localStorage.removeItem('saji-nick'); } catch (e) { /* this visit only */ }
+      publishMe(); render();
+      box.hidden = true;
+      say('이름', nick ? `닉네임을 ${nick}(으)로 바꿨습니다.` : `기본 이름 용사${me.n || ''}(으)로 돌아왔습니다.`);
+    };
+    const save = () => {
+      const raw = input.value.trim();
+      if (!raw) { apply(''); return; }
+      const v = cleanNick(raw);
+      if (!v) {
+        hint.classList.add('bad');
+        hint.textContent = '"용사+번호"나 "(나)"는 닉네임으로 쓸 수 없어요.';
+        input.focus(); return;
+      }
+      apply(v);
+    };
+    $('nameBtn').addEventListener('click', () => (box.hidden ? open() : close()));
+    $('nameSave').addEventListener('click', save);
+    $('nameReset').addEventListener('click', () => apply(''));
+    $('nameCancel').addEventListener('click', close);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') close(); });
+  }
+
   function updateHud() {
+    const myName = me.nick || '용사' + (me.n || '');
+    if ($('nameBtnText').textContent !== myName) $('nameBtnText').textContent = myName;
     $('goals').hidden = !me.seat;
     $('seated').textContent = seats.filter(s => s.taken || s.mine).length;
     $('present').textContent = people.length;
