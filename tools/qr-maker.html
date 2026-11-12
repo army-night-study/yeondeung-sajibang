@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>연등 다이어리 QR 만들기</title>
+<!-- 내 PC에서만 여는 도구입니다. 서명 열쇠 파일은 이 페이지 안에서만 읽히고 어디로도 보내지지 않습니다. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root { --ink: #22201a; --muted: #6b6455; --line: #d8d1c0; --bg: #f6f2e8; --card: #fffdf7; --accent: #3f4a2a; --red: #a3301e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, "Malgun Gothic", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; display: grid; gap: 16px; }
+  h1 { margin: 0; font-size: 22px; }
+  .lead { margin: 0; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+  h2 { margin: 0; font-size: 16px; }
+  .step { display: inline-block; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; text-align: center; font-size: 13px; line-height: 22px; margin-right: 6px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  input[type=text], input[type=number] { font: inherit; color: var(--ink); padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; width: 100%; }
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  button { font: inherit; padding: 9px 14px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .msg { margin: 0; font-size: 13px; color: var(--muted); }
+  .msg.ok { color: var(--accent); font-weight: 600; }
+  .msg.bad { color: var(--red); font-weight: 600; }
+  .warn { margin: 0; padding: 10px 12px; border-left: 3px solid var(--red); background: #fbeee8; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  .cell { border: 1px solid var(--line); border-radius: 6px; padding: 8px; text-align: center; background: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .cell svg { width: 100%; height: auto; display: block; }
+  code { font-size: 12px; word-break: break-all; }
+  #sheet { display: none; }
+  @media print {
+    @page { size: A4; margin: 10mm; }
+    body { background: #fff; }
+    main { display: none; }
+    #sheet { display: grid; grid-template-columns: repeat(var(--cols), var(--cell)); gap: 0; }
+    #sheet .s { width: var(--cell); height: calc(var(--qr) + 9mm); padding: 2mm; text-align: center; break-inside: avoid; border: 0.2mm dashed #bbb; }
+    #sheet svg { width: var(--qr); height: var(--qr); display: block; margin: 0 auto; }
+    #sheet .n { font: 600 8pt/1.2 system-ui, sans-serif; margin-top: 1mm; letter-spacing: .03em; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>연등 다이어리 QR 만들기</h1>
+    <p class="lead">다이어리마다 다른 일련번호와 서명이 들어간 QR을 만듭니다. 이 도구는 내 PC에서만 열어 쓰세요.</p>
+  </div>
+
+  <section>
+    <h2><span class="step">1</span>서명 열쇠 열기</h2>
+    <p class="msg">문서 폴더의 <b>연등다이어리_비밀열쇠\diary-signing-key.json</b>을 고르세요. 파일은 이 페이지 안에서만 읽힙니다.</p>
+    <div class="actions"><input type="file" id="keyFile" accept=".json,application/json"></div>
+    <p class="msg" id="keyMsg">아직 열쇠를 열지 않았습니다.</p>
+    <p class="warn">이 열쇠 파일이 있으면 누구나 정품 QR을 만들 수 있어요. 다른 사람에게 보내거나 GitHub에 올리지 말고, USB 등에 따로 백업해 두세요.</p>
+  </section>
+
+  <section>
+    <h2><span class="step">2</span>만들 QR 정하기</h2>
+    <label>사이트 주소 (도메인을 정하면 여기만 바꾸세요)
+      <input type="text" id="base" value="https://army-night-study.github.io/yeondeung-sajibang/">
+    </label>
+    <div class="row">
+      <label>일련번호 앞부분 (영문 대문자·숫자)<input type="text" id="prefix" value="YD26" maxlength="8"></label>
+      <label>시작 번호<input type="number" id="start" value="1" min="1" max="99999999"></label>
+      <label>개수 (최대 5000)<input type="number" id="count" value="100" min="1" max="5000"></label>
+    </div>
+    <p class="msg" id="rangeMsg"></p>
+    <div class="actions"><button class="primary" id="make" disabled>QR 만들기</button></div>
+    <p class="msg" id="makeMsg"></p>
+  </section>
+
+  <section>
+    <h2><span class="step">3</span>내려받기</h2>
+    <div class="actions">
+      <button id="csv" disabled>목록 CSV (인쇄소 가변 인쇄용)</button>
+      <button id="zip" disabled>QR 이미지 ZIP (SVG)</button>
+      <button id="print" disabled>스티커 인쇄 시트</button>
+    </div>
+    <div class="row">
+      <label>스티커 시트 QR 크기 (mm, 최소 20)<input type="number" id="qrmm" value="25" min="20" max="60"></label>
+    </div>
+    <p class="msg">CSV에는 일련번호, 코드, QR에 넣을 주소가 들어 있어요. 인쇄소가 가변 데이터 인쇄를 하면 CSV를, 직접 붙일 스티커라면 인쇄 시트를 쓰세요. 만든 CSV는 판매 기록으로 꼭 보관하세요.</p>
+    <p class="warn">같은 일련번호를 두 번 만들지 마세요. 다음 묶음은 이번 마지막 번호 다음부터 시작하세요.</p>
+    <div class="grid" id="preview"></div>
+  </section>
+</main>
+<div id="sheet"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const b64u = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+let signKey = null, verifyKey = null, codes = [];
+
+$('keyFile').addEventListener('change', async () => {
+  const f = $('keyFile').files[0]; if (!f) return;
+  try {
+    const jwk = JSON.parse(await f.text());
+    if (jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.d) throw new Error('형식');
+    const alg = { name: 'ECDSA', namedCurve: 'P-256' };
+    signKey = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y, d: jwk.d, ext: true }, alg, false, ['sign']);
+    verifyKey = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y, ext: true }, alg, false, ['verify']);
+    $('keyMsg').className = 'msg ok';
+    $('keyMsg').textContent = `열쇠를 열었습니다 (열쇠 ${jwk.kid || '?'} · 공개키 ${jwk.x.slice(0, 10)}…).`;
+    $('make').disabled = false;
+  } catch (e) {
+    signKey = null; $('make').disabled = true;
+    $('keyMsg').className = 'msg bad'; $('keyMsg').textContent = '열쇠 파일을 읽지 못했어요. diary-signing-key.json 파일이 맞는지 확인해 주세요.';
+  }
+});
+
+function range() {
+  const prefix = $('prefix').value.trim().toUpperCase(), start = Math.floor(+$('start').value), count = Math.floor(+$('count').value);
+  if (!/^[A-Z0-9]{2,8}$/.test(prefix)) return { err: '앞부분은 영문 대문자와 숫자 2–8자로 적어 주세요.' };
+  if (!(start >= 1) || !(count >= 1 && count <= 5000)) return { err: '시작 번호와 개수를 확인해 주세요.' };
+  const width = Math.max(6, String(start + count - 1).length);
+  const serial = n => `${prefix}-${String(n).padStart(width, '0')}`;
+  return { prefix, start, count, serial, first: serial(start), last: serial(start + count - 1) };
+}
+function showRange() { const r = range(); $('rangeMsg').textContent = r.err || `${r.first}부터 ${r.last}까지 ${r.count}개`; }
+['prefix', 'start', 'count'].forEach(id => $(id).addEventListener('input', showRange)); showRange();
+
+function qrSvg(text, label) {
+  const qr = qrcode(0, 'M'); qr.addData(text, 'Byte'); qr.make();
+  const n = qr.getModuleCount(), q = 4, size = n + q * 2, h = label ? size + 5 : size;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + q},${r + q}h1v1h-1z`;
+  const t = label ? `<text x="${size / 2}" y="${size + 3}" font-family="Arial, sans-serif" font-size="3" font-weight="700" text-anchor="middle" fill="#000">${label}</text>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${h}" shape-rendering="crispEdges"><rect width="${size}" height="${h}" fill="#fff"/><path d="${d}" fill="#000"/>${t}</svg>`;
+}
+
+$('make').addEventListener('click', async () => {
+  const r = range(); if (r.err) { $('makeMsg').className = 'msg bad'; $('makeMsg').textContent = r.err; return; }
+  let base = $('base').value.trim();
+  if (!/^https:\/\/[^\s?#]+\/?$/.test(base)) { $('makeMsg').className = 'msg bad'; $('makeMsg').textContent = '사이트 주소는 https://로 시작하고 ?나 #이 없어야 해요.'; return; }
+  if (!base.endsWith('/')) base += '/';
+  $('make').disabled = true; codes = [];
+  const enc = new TextEncoder();
+  for (let i = 0; i < r.count; i++) {
+    const serial = r.serial(r.start + i), data = enc.encode(serial);
+    const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, signKey, data);
+    if (!await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, verifyKey, sig, data)) throw new Error('verify');
+    const code = `${serial}.${b64u(sig)}`;
+    codes.push({ serial, code, url: `${base}?d=${code}` });
+    if (i % 50 === 0) { $('makeMsg').className = 'msg'; $('makeMsg').textContent = `만드는 중… ${i + 1}/${r.count}`; await new Promise(res => setTimeout(res)); }
+  }
+  $('make').disabled = false;
+  $('makeMsg').className = 'msg ok';
+  $('makeMsg').textContent = `${codes.length}개를 만들고 모두 서명을 확인했습니다 (${r.first} – ${r.last}). QR 주소 길이 ${codes[0].url.length}자.`;
+  const pv = $('preview'); pv.textContent = '';
+  codes.slice(0, 12).forEach(c => { const d = document.createElement('div'); d.className = 'cell'; d.innerHTML = qrSvg(c.url) + c.serial; pv.appendChild(d); });
+  ['csv', 'zip', 'print'].forEach(id => ($(id).disabled = false));
+});
+
+function save(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+const batchName = () => `${codes[0].serial}_${codes[codes.length - 1].serial}`;
+$('csv').addEventListener('click', () => {
+  const lines = ['serial,code,url', ...codes.map(c => `${c.serial},${c.code},${c.url}`)];
+  save(new Blob(['﻿' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }), `연등다이어리_QR_${batchName()}.csv`);
+});
+$('zip').addEventListener('click', async () => {
+  $('zip').disabled = true; $('zip').textContent = '압축하는 중…';
+  const zip = new JSZip();
+  codes.forEach(c => zip.file(`${c.serial}.svg`, qrSvg(c.url, c.serial)));
+  save(await zip.generateAsync({ type: 'blob' }), `연등다이어리_QR_${batchName()}.zip`);
+  $('zip').disabled = false; $('zip').textContent = 'QR 이미지 ZIP (SVG)';
+});
+$('print').addEventListener('click', () => {
+  const mm = Math.min(60, Math.max(20, +$('qrmm').value || 25)), cell = mm + 6, cols = Math.max(1, Math.floor(190 / cell));
+  const sh = $('sheet'); sh.textContent = '';
+  sh.style.setProperty('--qr', mm + 'mm'); sh.style.setProperty('--cell', cell + 'mm'); sh.style.setProperty('--cols', cols);
+  codes.forEach(c => { const d = document.createElement('div'); d.className = 's'; d.innerHTML = qrSvg(c.url) + `<div class="n">${c.serial}</div>`; sh.appendChild(d); });
+  window.print();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# never commit signing keys
+*signing-key*.json
+*.jwk
+*private*key*

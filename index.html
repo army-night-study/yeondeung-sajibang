@@ -214,6 +214,14 @@
   .tag .doing:empty { display: none; }
   .tag .rec { display: block; margin-top: 3px; font-size: 10px; font-weight: 600; color: #7a2e1c; }
   .tag .rec:empty { display: none; }
+  .tag .rec .gen { display: inline-block; margin-right: 4px; padding: 0 4px; border-radius: 3px; background: #7a2e1c; color: #fff4dc; font-size: 9px; letter-spacing: 0.04em; }
+  /* 정품 다이어리 인증: a QR printed inside the paper diary carries a signed serial */
+  .genuine { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid #7a2e1c; border-radius: 8px; background: rgba(122, 46, 28, 0.06); color: #4a2a14; }
+  .genuine .seal { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #b0301e; color: #b0301e; display: grid; place-items: center; font-size: 11px; font-weight: 700; line-height: 1.05; text-align: center; transform: rotate(-10deg); }
+  .genuine b { display: block; font-size: 14px; }
+  .genuine span { display: block; font-size: 12px; color: #6b5a3e; font-variant-numeric: tabular-nums; }
+  .genuine.bad { border-color: #8a7a5e; background: rgba(0, 0, 0, 0.04); }
+  .genuine.bad .seal { border-color: #8a7a5e; color: #8a7a5e; }
 
   .goals {
     flex: 1 1 100%; min-width: 0;
@@ -267,6 +275,7 @@
         </div>
         <button id="diaryClose" type="button">닫기</button>
       </div>
+      <div class="genuine" id="genuine" hidden><div class="seal" id="genuineSeal">정품<br>인증</div><div><b id="genuineTitle"></b><span id="genuineMsg"></span></div></div>
       <div class="diary-stats" id="diaryStats"></div>
       <button id="diaryUpload" class="primary" type="button">오늘 다이어리 인증하기</button>
       <p class="diary-tip">종이 다이어리에서 오늘 쓴 페이지를 펼쳐 찍어 올리세요. 새벽 6시 전에 올리면 전날 기록이 됩니다.</p>
@@ -1206,7 +1215,7 @@
   const tagLayer = document.getElementById('tags');
   const avatars = new Map();
   let people = [];
-  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, isMe: true };
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true };
   // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
   // Text from other viewers is untrusted: strip control/invisible characters, cap the length, render as text only.
   const cleanDoing = s => (typeof s === 'string' ? s : '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, 16);
@@ -1288,7 +1297,12 @@
       if (a.doing.textContent !== doing) a.doing.textContent = doing;
       // only the number of recorded days travels to others, never the photos
       const rec = p.days ? `연등 기록 ${p.days}일` : '';
-      if (a.rec.textContent !== rec) a.rec.textContent = rec;
+      const recKey = (p.gen ? 'G' : '') + rec;
+      if (a.recKey !== recKey) {
+        a.recKey = recKey; a.rec.textContent = '';
+        if (p.gen) { const g = document.createElement('span'); g.className = 'gen'; g.textContent = '정품 다이어리'; a.rec.appendChild(g); }
+        if (rec) a.rec.append(rec);
+      }
     });
     avatars.forEach((a, id) => {
       if (seen.has(id)) return;
@@ -1347,6 +1361,7 @@
         joinedAt: num(pr.joinedAt, 0, 1e15) || 1e15,
         doing: cleanDoing(pr.doing),
         days: Number.isInteger(pr.days) ? num(pr.days, 0, 9999) || 0 : 0,
+        gen: pr.gen === 1,
       });
     });
     if (!sawMe) list.push(me);
@@ -1354,7 +1369,7 @@
   }
   function publishMe() {
     if (!online || !hall) return;
-    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days }).catch(() => {});
+    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0 }).catch(() => {});
   }
   const byArrival = (a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1);
 
@@ -1693,6 +1708,10 @@
 
   function showStamp(date) {
     $('stampDate').textContent = date.replace(/-/g, '.');
+    $('stamp').querySelector('.stamp-top').textContent = '연등 인증';
+    showStampRing();
+  }
+  function showStampRing() {
     const s = $('stamp'); s.hidden = false;
     const ring = s.firstElementChild; ring.style.animation = 'none'; void ring.offsetWidth; ring.style.animation = '';
     clearTimeout(showStamp.t); showStamp.t = setTimeout(() => (s.hidden = true), 1800);
@@ -1796,6 +1815,79 @@
     (list || []).forEach(e => { if (e && e.date && e.photo && e.thumb) entries.set(e.date, e); });
     diaryChanged();
   }).catch(() => { diaryStorageOk = false; });
+
+  // ---------- 정품 다이어리 인증 (QR inside the paper diary) ----------
+  // The QR opens this page with ?d=SERIAL.SIGNATURE. The signature is ECDSA P-256 over the serial,
+  // made offline with a private key that never leaves the maker's PC; the page checks it with the
+  // public key below, so nobody can invent a valid serial. (A copied QR still verifies — stopping
+  // reuse needs a server that remembers which serial was claimed.)
+  const DIARY_KEYS = [
+    { kid: 'k1', x: 'dl1TfbmUWIjzwp_hE6-0mAesCjQ6bnNlxYS-9MVJULo', y: 'nVnmSVpRWjQFBb4-wcwOoThggdjgvxqJLGBD_5ONadg' },
+  ];
+  const GENUINE_KEY = 'saji-genuine';
+  const b64uBytes = s => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+  async function verifyDiaryCode(code) {
+    const m = /^([A-Z0-9]{2,8}-\d{4,8})\.([A-Za-z0-9_-]{86})$/.exec(code || '');
+    if (!m) return null;
+    if (!(window.crypto && crypto.subtle)) throw new Error('nocrypto');
+    const sig = b64uBytes(m[2]), data = new TextEncoder().encode(m[1]);
+    for (const k of DIARY_KEYS) {
+      const key = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: k.x, y: k.y, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      if (await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, sig, data)) return m[1];
+    }
+    return null;
+  }
+  let genuine = null;   // { serial, code, at }
+  function showGenuine(state, title, msg) {
+    const box = $('genuine');
+    box.hidden = !state; box.classList.toggle('bad', state === 'bad');
+    $('genuineSeal').innerHTML = state === 'bad' ? '확인<br>불가' : '정품<br>인증';
+    $('genuineTitle').textContent = title || ''; $('genuineMsg').textContent = msg || '';
+  }
+  function setGenuine(g) {
+    genuine = g; me.gen = !!g;
+    if (g) {
+      const t = new Date(g.at);
+      showGenuine('ok', '정품 다이어리 인증', `일련번호 ${g.serial} · ${t.getFullYear()}.${pad(t.getMonth() + 1)}.${pad(t.getDate())} 등록`);
+    } else showGenuine(null);
+    publishMe(); render();
+  }
+  setTimeout(async () => {   // after the rest of the page has set itself up
+    // a code saved earlier is checked again, so editing storage by hand does not make a badge
+    try {
+      const saved = JSON.parse(localStorage.getItem(GENUINE_KEY) || 'null');
+      if (saved && saved.code && await verifyDiaryCode(saved.code) === saved.serial) setGenuine(saved);
+    } catch (e) { /* no storage or no crypto: no badge */ }
+
+    const params = new URLSearchParams(location.search);
+    const code = params.get('d');
+    if (code === null) return;
+    // take the code out of the address so a shared link or reload does not carry it
+    params.delete('d');
+    const qs = params.toString();
+    try { history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash); } catch (e) { /* sandboxed */ }
+    openDiary();
+    let serial = null;
+    try { serial = await verifyDiaryCode(code.trim()); }
+    catch (e) {
+      showGenuine('bad', '지금은 확인할 수 없어요', '이 브라우저에서는 인증을 확인할 수 없어요. 다른 브라우저로 QR을 다시 찍어 주세요.');
+      return;
+    }
+    if (!serial) {
+      showGenuine('bad', '확인되지 않은 코드예요', '다이어리 표지 안쪽의 QR을 다시 찍어 주세요. 계속 안 되면 일련번호와 함께 문의해 주세요.');
+      say('정품 인증', '확인되지 않은 코드입니다.');
+      return;
+    }
+    const again = genuine && genuine.serial === serial;
+    const g = again ? genuine : { serial, code: code.trim(), at: Date.now() };
+    try { localStorage.setItem(GENUINE_KEY, JSON.stringify(g)); } catch (e) { /* badge for this visit only */ }
+    setGenuine(g);
+    $('stampDate').textContent = serial;
+    const s = $('stamp'); s.querySelector('.stamp-top').textContent = '정품 인증';
+    showStampRing();
+    say('정품 인증', again ? `다시 오셨네요. 정품 다이어리(${serial})로 오늘 쓴 페이지를 찍어 올려 보세요.`
+                           : `정품 다이어리(${serial})가 확인됐습니다. 이름표에 정품 배지가 붙었어요. 오늘 쓴 페이지를 찍어 올려 보세요.`);
+  }, 0);
 
   // ---------- my diaries on the desk ----------
   // While I sit, my recorded days stand as a pile of green diaries beside the monitor,
