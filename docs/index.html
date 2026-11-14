@@ -2821,15 +2821,54 @@
   // of the room (front aisle, centre aisle, window aisle) and leaves. Where he is comes from the
   // clock alone, so everyone sees him in the same place without sending anything, and someone who
   // opens the page mid-visit sees him mid-lap. (?patrol=1|2|3 starts that visit now, for checking.)
-  const PATROL_ROUTE = [[-4.8, 4.4], [-4.0, 3.6], [4.0, 3.6], [4.0, 0], [-4.0, 0], [-4.0, -3.6], [4.3, -3.6], [4.3, 3.9], [-4.8, 4.4]];
+  // the door: right wall, to the right of the clock and the 충성 poster (seen from inside), hinged on
+  // its front-wall side and opening into the room
+  const DOOR_Z = 3.5, DOOR_W = 0.9, DOOR_H = 2.02;
+  const doorPivot = new THREE.Group(); doorPivot.position.set(RW - 0.012, 0, DOOR_Z + DOOR_W / 2);
+  {
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x6b7360, roughness: 0.6, metalness: 0.2 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3d33, roughness: 0.5, metalness: 0.3 });
+    // what shows through the open door: a dim corridor
+    const hall = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W, DOOR_H), new THREE.MeshBasicMaterial({ color: 0x15180f }));
+    hall.rotation.y = -Math.PI / 2; hall.position.set(RW - 0.004, DOOR_H / 2, DOOR_Z); scene.add(hall);
+    // frame: two jambs and a head
+    [-1, 1].forEach(k => { const j = box(0.05, DOOR_H + 0.05, 0.05, frameMat); j.position.set(RW - 0.02, (DOOR_H + 0.05) / 2, DOOR_Z + k * (DOOR_W / 2 + 0.025)); scene.add(j); });
+    const head = box(0.05, 0.05, DOOR_W + 0.1, frameMat); head.position.set(RW - 0.02, DOOR_H + 0.025, DOOR_Z); scene.add(head);
+    // the leaf hangs from the pivot and reaches back toward the poster side
+    const leaf = new THREE.Group(); leaf.position.set(-0.024, 0, -DOOR_W / 2); doorPivot.add(leaf);
+    const slab = box(0.04, DOOR_H - 0.02, DOOR_W - 0.02, doorMat); slab.position.y = DOOR_H / 2; leaf.add(slab);
+    // a recessed panel, a small wired-glass window and a lever handle on the room side
+    // (on both faces, since the open door shows its corridor side to most of the room)
+    const panel = box(0.052, 0.7, DOOR_W - 0.24, frameMat); panel.position.set(0, 0.55, 0); leaf.add(panel);
+    const glass = box(0.05, 0.42, 0.3, new THREE.MeshStandardMaterial({ color: 0x1d2a2e, roughness: 0.15, metalness: 0.4 })); glass.position.set(0, 1.55, 0); leaf.add(glass);
+    [-1, 1].forEach(side => {
+      const lever = box(0.03, 0.02, 0.12, frameMat); lever.position.set(side * 0.04, 1.0, -DOOR_W / 2 + 0.12); leaf.add(lever);
+      const rose = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.012, 16), frameMat); rose.rotation.z = Math.PI / 2; rose.position.set(side * 0.026, 1.0, -DOOR_W / 2 + 0.08); leaf.add(rose);
+    });
+  }
+  scene.add(doorPivot);
+  // 0 = shut, 1 = open (swung about 85° into the room)
+  const setDoor = a => { doorPivot.rotation.y = a * Math.PI * 0.47; };
+
+  // route: from just outside the door, in, one lap, back out. Each visit opens the door, steps in,
+  // closes it behind him; at the end opens it, steps out and closes it.
+  const PATROL_ROUTE = [[6.35, DOOR_Z], [5.2, DOOR_Z], [-4.0, 3.75], [-4.0, 0], [0, 0], [4.6, 0], [4.6, -3.6], [-4.9, -3.6], [-4.9, 4.3], [5.2, 4.3], [5.2, DOOR_Z], [6.35, DOOR_Z]];
   const PATROL_SPEED = 1.1;
-  // pauses: after reaching route point i, stand for s seconds facing (fx, fz); speak = say the line there
-  const PATROL_PAUSES = { 0: { s: 0.8 }, 1: { s: 3.8, fx: 0, fz: 0, speak: true }, 3: { s: 2.2, fx: -4, fz: 0 }, 6: { s: 1.6, fx: 0, fz: 0 } };
+  // pauses: after reaching route point i, stand for s seconds facing (fx, fz); speak = say the line there;
+  // door = what the door does during the first DOOR_T seconds of that pause
+  const DOOR_T = 0.8;
+  const PATROL_PAUSES = {
+    0: { s: 1.1, fx: 0, fz: DOOR_Z, door: 'open' },
+    1: { s: 3.8, fx: 0, fz: 0, speak: true, door: 'close' },
+    4: { s: 2.2, fx: -4, fz: 0 },
+    10: { s: 1.1, fx: 9, fz: DOOR_Z, door: 'open' },
+    11: { s: 1.0, fx: 9, fz: DOOR_Z, door: 'close' },
+  };
   const PATROL_STEPS = (() => {
     const steps = []; let t = 0;
     PATROL_ROUTE.forEach((p, i) => {
       const pause = PATROL_PAUSES[i];
-      if (pause) { steps.push({ wait: true, p, t0: t, t1: t + pause.s, face: pause.fx != null ? [pause.fx, pause.fz] : null, speak: !!pause.speak }); t += pause.s; }
+      if (pause) { steps.push({ wait: true, p, t0: t, t1: t + pause.s, face: pause.fx != null ? [pause.fx, pause.fz] : null, speak: !!pause.speak, door: pause.door }); t += pause.s; }
       const q = PATROL_ROUTE[i + 1];
       if (q) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); steps.push({ wait: false, p, q, t0: t, t1: t + d / PATROL_SPEED }); t += d / PATROL_SPEED; }
     });
@@ -2874,8 +2913,20 @@
     for (const v of list) if (nowMs >= v.start && nowMs < v.start + PATROL_DUR * 1000) { visit = v; break; }
     if (!visit) {
       if (sgt && sgtVisit) { sgt.holder.visible = false; sgt.sol.tag = null; sgt.tag.hidden = true; sgt.sol.walking = false; }
+      if (sgtVisit !== null || doorPivot.rotation.y) setDoor(0);
       sgtVisit = null;
       return;
+    }
+    {
+      // the door follows the visit's timeline: the last open/close that has begun decides it
+      const tt = (nowMs - visit.start) / 1000;
+      let amt = 0;
+      for (const s of PATROL_STEPS) {
+        if (!s.door || s.t0 > tt) continue;
+        const k = Math.min(1, (tt - s.t0) / DOOR_T), e = k * k * (3 - 2 * k);
+        amt = s.door === 'open' ? e : 1 - e;
+      }
+      setDoor(amt);
     }
     const n = patrolNPC();
     if (sgtVisit !== visit.start) {
