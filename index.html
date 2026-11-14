@@ -136,6 +136,14 @@
   .guide-time { width: 100%; margin: 6px 0 4px; border-collapse: collapse; font-size: 13.5px; line-height: 1.45; }
   .guide-time th { text-align: left; white-space: nowrap; padding: 4px 12px 4px 0; vertical-align: top; font-variant-numeric: tabular-nums; color: #2f3a28; }
   .guide-time td { padding: 4px 0; }
+  .board-list { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .board-list thead td, .board-list thead th { font-size: 11px; color: #6b5a3e; font-weight: 600; padding: 4px 6px; border-bottom: 1px solid rgba(42, 38, 51, 0.18); }
+  .board-list th { text-align: left; font-weight: 600; }
+  .board-list td, .board-list th { padding: 7px 6px; }
+  .board-list td { text-align: right; white-space: nowrap; }
+  .board-list td:first-child { text-align: center; width: 2.5em; font-weight: 700; }
+  .board-list tbody tr + tr { border-top: 1px solid rgba(42, 38, 51, 0.08); }
+  .board-list tr.me { background: rgba(122, 90, 46, 0.14); }
   .diary-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .diary-head .eyebrow { font-size: 10px; letter-spacing: 0.16em; font-weight: 600; color: #7a5a2e; }
   .diary-head h2 { margin: 2px 0 0; font-family: "Gowun Batang", serif; font-weight: 700; font-size: 24px; line-height: 1.2; }
@@ -422,6 +430,24 @@
     <button id="btnGuide" type="button">설명서</button>
   </div>
 </footer>
+
+<!-- 연등 시간판: everyone connected now, by total time -->
+<div class="diary" id="boardDlg" role="dialog" aria-modal="true" aria-labelledby="boardTitle" hidden>
+  <div class="diary-card guide-card">
+    <div class="diary-head">
+      <div>
+        <div class="eyebrow" id="boardScope">전체 사지방</div>
+        <h2 id="boardTitle">연등 시간판</h2>
+      </div>
+      <button id="boardClose" type="button">닫기</button>
+    </div>
+    <table class="board-list">
+      <thead><tr><td>순위</td><th>이름</th><td>오늘</td><td>누적</td></tr></thead>
+      <tbody id="boardList"></tbody>
+    </table>
+    <p class="diary-note">지금 접속해 있는 사람만 보여요. 시간은 각자 기기에서 이 화면을 켜 둔 동안 잰 거예요.</p>
+  </div>
+</div>
 
 <!-- 설명서: how to use the room -->
 <div class="diary" id="guide" role="dialog" aria-modal="true" aria-labelledby="guideTitle" hidden>
@@ -1646,7 +1672,7 @@
   const tagLayer = document.getElementById('tags');
   const avatars = new Map();
   let people = [];
-  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true,
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true, t: 0, T: 0,
     // where I stand when not seated (world x/z on the floor, ry = facing); start in the centre aisle
     x: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 0.6, ry: Math.PI };
   // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
@@ -1818,6 +1844,8 @@
         days: Number.isInteger(pr.days) ? num(pr.days, 0, 9999) || 0 : 0,
         gen: pr.gen === 1,
         nick: cleanNick(pr.nick),
+        t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0,
+        T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0,
         // floor position while walking: anything outside the room (or not a number) is dropped
         x: num(pr.x, -6, 6), z: num(pr.z, -5, 5), ry: num(pr.ry, -7, 7),
       });
@@ -1830,7 +1858,14 @@
     hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0, nick: me.nick,
       // seated, the seat says where I am; standing, my floor spot (cm precision)
       x: me.seat ? null : Math.round(me.x * 100) / 100, z: me.seat ? null : Math.round(me.z * 100) / 100,
-      ry: me.seat ? null : Math.round(me.ry * 100) / 100 }).catch(() => {});
+      ry: me.seat ? null : Math.round(me.ry * 100) / 100, t: me.t, T: me.T }).catch(() => {});
+    // the lobby copy (public 사지방 only): which 사지방, the name, and today's / total minutes.
+    // Sent only when it changes, since publishMe also runs for every step I walk.
+    if (lobbyRef && !privateCode) {
+      const lob = { hall: hallNo, nm: me.nick || (me.n ? '용사' + me.n : ''), t: me.t, T: me.T };
+      const key = JSON.stringify(lob);
+      if (key !== lobbySent) { lobbySent = key; lobbyRef.presence(lob).catch(() => {}); }
+    }
   }
   const byArrival = (a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1);
 
@@ -1843,7 +1878,7 @@
   // 친구 부르기: a private code in the address (#code) puts friends in their own 사지방
   let privateCode = (/^#([a-z0-9]{6,16})$/.exec(location.hash) || [])[1] || null;
   const roomName = h => (privateCode ? 'f-' + privateCode + '-' : '') + 'saji-' + h;
-  let lobbyRef = null;
+  let lobbyRef = null, lobbySent = '';
 
   function trysteroRoom(T, name) {
     const r = T.joinRoom(privateCode ? { appId: APP_ID, password: privateCode } : { appId: APP_ID }, name);
@@ -1884,13 +1919,10 @@
     if (!window.isSecureContext || !(window.crypto && crypto.subtle)) return null;
     try {
       const T = await import('https://cdn.jsdelivr.net/npm/trystero@0.26.0/+esm');
-      return {
-        trystero: true,
-        peers: () => [],
-        onPeers: fn => { const t = setTimeout(() => fn({ peers: [] }), 0); return () => clearTimeout(t); },
-        presence: async () => {},
-        join: async name => trysteroRoom(T, name),
-      };
+      // a lobby everyone joins as well: it says which 사지방 each person is in (so the 25th goes next
+      // door) and carries the small numbers the time board shows for every 사지방
+      const lobby = trysteroRoom(T, (privateCode ? 'f-' + privateCode + '-' : '') + 'lobby');
+      return Object.assign(lobby, { trystero: true, join: async name => trysteroRoom(T, name) });
     } catch (e) { return null; }
   }
 
@@ -1921,7 +1953,7 @@
     try { room = await lobby.join(roomName(h)); } catch (e) { if (!online) startSolo(); return; }
     hall = room; hallNo = h; online = true;
     me.n = 0; me.seat = null; me.joinedAt = Date.now();
-    if (!privateCode) lobby.presence({ hall: h }).catch(() => {});
+    lobbySent = '';
     publishMe();
     room.settled = false;
     room.onPeers(() => { if (hall === room) { if (room.settled && overflowed(lobby, room, h)) return; onHallChange(); } });
@@ -2276,6 +2308,32 @@
     (list || []).forEach(e => { if (e && e.date && e.photo && e.thumb) entries.set(e.date, e); });
     diaryChanged();
   }).catch(() => { diaryStorageOk = false; });
+
+  // ---------- 접속 시간 (today / total) ----------
+  // Counted in this browser while the page is open and on screen (a hidden tab doesn't count).
+  // "Today" follows the diary's day, so a night that runs past midnight stays one day. The minutes
+  // go out with presence for the time board; there is no server, so each person reports their own.
+  const TIME_KEY = 'saji-time';
+  let boardDirty = true;
+  setTimeout(() => {   // after the rest of the page has set itself up (recordDay needs pad)
+    let s = { day: recordDay(), today: 0, total: 0 };
+    try { const v = JSON.parse(localStorage.getItem(TIME_KEY) || 'null'); if (v && typeof v.total === 'number') s = Object.assign(s, v); } catch (e) { /* fresh */ }
+    const save = () => { try { localStorage.setItem(TIME_KEY, JSON.stringify(s)); } catch (e) { /* this visit only */ } };
+    let last = Date.now(), savedAt = 0;
+    const tick = () => {
+      const now = Date.now(), dt = Math.min(5, Math.max(0, (now - last) / 1000)); last = now;
+      const day = recordDay();
+      if (day !== s.day) { s.day = day; s.today = 0; }
+      if (!document.hidden) { s.today += dt; s.total += dt; }
+      const t = Math.floor(s.today / 60), T = Math.floor(s.total / 60);
+      if (t !== me.t || T !== me.T) { me.t = t; me.T = T; publishMe(); boardDirty = true; }
+      if (now - savedAt > 15000) { savedAt = now; save(); }
+    };
+    setInterval(tick, 1000);
+    addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', () => { last = Date.now(); if (document.hidden) save(); });
+    me.t = Math.floor(s.today / 60); me.T = Math.floor(s.total / 60);
+  }, 0);
 
   // ---------- 정품 다이어리 인증 (QR inside the paper diary) ----------
   // The QR opens this page with ?d=SERIAL.SIGNATURE. The signature is ECDSA P-256 over the serial,
@@ -2777,7 +2835,7 @@
   const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
   window.addEventListener('keydown', e => {
     const k = KEYMAP[e.code];
-    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden || !$('guide').hidden) return;
+    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden || !$('guide').hidden || !$('boardDlg').hidden) return;
     e.preventDefault();
     if (me.seat) return;   // seated: keys do nothing until 일어서기
     keys.add(k);
@@ -3028,6 +3086,101 @@
     if (n.line.textContent !== text) n.line.textContent = text;
     if (speaking && sgtSpoke !== visit.start) { sgtSpoke = visit.start; say('행보관', visit.line); }
   }
+  // ---------- 연등 시간판 (time board) ----------
+  // A board on the right wall, near the windows, ranking everyone connected right now — in every
+  // public 사지방, via the lobby (in a friends' room: the friends) — by total time, with today's
+  // time beside it. Tap it for the full list. People who are offline aren't on it: with no server,
+  // only the people here now can report their numbers.
+  const fmtMin = m => (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`);
+  function boardRows() {
+    const rows = [];
+    const mine = { name: me.nick || '용사' + (me.n || ''), hall: hallNo, t: me.t, T: me.T, me: true };
+    if (online && lobbyRef && !privateCode) {
+      lobbyRef.peers().forEach(p => {
+        if (p.kind !== 'viewer' || p.sameTab) return;
+        const pr = p.presence || {}, h = num(pr.hall, 1, 999);
+        if (!Number.isInteger(h)) return;
+        rows.push({ name: cleanDoing(pr.nm).slice(0, 8) || '용사', hall: h,
+          t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0, T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0, me: false });
+      });
+    } else if (online) {
+      roomPeople().forEach(p => { if (!p.isMe) rows.push({ name: p.nick || '용사' + (p.n || ''), hall: hallNo, t: p.t || 0, T: p.T || 0, me: false }); });
+    } else {
+      // offline 체험: the simulated 용사들 get steady made-up times
+      npcs.forEach(p => rows.push({ name: '용사' + p.n, hall: 1, t: (p.n * 13) % 110, T: (p.days || 0) * 95 + p.n * 7, me: false }));
+    }
+    rows.push(mine);
+    rows.sort((a, b) => b.T - a.T || b.t - a.t || (a.me ? -1 : 1));
+    rows.forEach((r, i) => (r.rank = i + 1));
+    return rows;
+  }
+  const BOARD_W = 1.3, BOARD_H = 1.04, BOARD_Z = -3.75;
+  const boardCanvas = canvasTex(640, 512, () => {});
+  const boardMesh = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_W, BOARD_H), new THREE.MeshStandardMaterial({ map: boardCanvas.tex, roughness: 0.75, emissive: 0xffffff, emissiveMap: boardCanvas.tex, emissiveIntensity: 0.45 }));   // lit like a notice board, readable after lights-out too
+  boardMesh.rotation.y = -Math.PI / 2; boardMesh.position.set(RW - 0.024, 1.55, BOARD_Z); scene.add(boardMesh);
+  {
+    const frame = box(0.03, BOARD_H + 0.07, BOARD_W + 0.07, new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.6 }));
+    frame.position.set(RW - 0.004, 1.55, BOARD_Z); scene.add(frame);
+  }
+  function drawBoard() {
+    const ctx = boardCanvas.ctx, w = 640, h = 512, rows = boardRows();
+    ctx.fillStyle = '#1f2a1d'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 6);
+    center(ctx, '연등 시간판', `44px ${DISPLAY}`, '#f1eedc', w / 2, 46);
+    const scope = online && lobbyRef && !privateCode ? '전체 사지방' : privateCode ? '친구 사지방' : '오프라인 체험';
+    center(ctx, `${scope} · 지금 접속 ${rows.length}명 · 누적 시간 순`, `20px ${BODY}`, '#b9c0a8', w / 2, 88);
+    const cols = { rank: 44, name: 92, today: 430, total: 604 };
+    ctx.font = `600 18px ${BODY}`; ctx.fillStyle = '#8f977f'; ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left'; ctx.fillText('순위', 26, 124); ctx.fillText('이름', cols.name, 124);
+    ctx.textAlign = 'right'; ctx.fillText('오늘', cols.today, 124); ctx.fillText('누적', cols.total, 124);
+    ctx.fillStyle = 'rgba(214,196,126,0.35)'; ctx.fillRect(24, 140, w - 48, 2);
+    // top 8, and my own line in the last place if I'm further down
+    const shown = rows.slice(0, 8);
+    const myRow = rows.find(r => r.me);
+    if (myRow && myRow.rank > 8) shown[7] = myRow;
+    shown.forEach((r, i) => {
+      const y = 168 + i * 38;
+      if (r.me) { ctx.fillStyle = 'rgba(214,196,126,0.22)'; ctx.fillRect(24, y - 18, w - 48, 36); }
+      ctx.textBaseline = 'middle';
+      ctx.font = `${r.rank <= 3 ? '700 24px' : '600 21px'} ${BODY}`;
+      ctx.fillStyle = r.rank === 1 ? '#e6c55a' : r.rank === 2 ? '#d0d4c8' : r.rank === 3 ? '#d39a62' : '#c9cfbe';
+      ctx.textAlign = 'center'; ctx.fillText(String(r.rank), cols.rank, y);
+      ctx.textAlign = 'left'; ctx.fillStyle = r.me ? '#fff6d8' : '#eef0e4'; ctx.font = `600 21px ${BODY}`;
+      const label = r.name + (r.me ? ' (나)' : '');
+      ctx.fillText(label, cols.name, y);
+      if (scope === '전체 사지방') { const lw = ctx.measureText(label).width; ctx.font = `16px ${BODY}`; ctx.fillStyle = '#8f977f'; ctx.fillText(`제${r.hall} 사지방`, cols.name + lw + 10, y + 1); }
+      ctx.textAlign = 'right'; ctx.font = `20px ${BODY}`; ctx.fillStyle = '#c9cfbe'; ctx.fillText(fmtMin(r.t), cols.today, y);
+      ctx.font = `700 21px ${BODY}`; ctx.fillStyle = '#f1eedc'; ctx.fillText(fmtMin(r.T), cols.total, y);
+    });
+    center(ctx, '시간은 각자 기기에서 화면을 켜 둔 동안 재요 · 눌러서 전체 보기', `16px ${BODY}`, '#7f8770', w / 2, h - 22);
+    boardCanvas.tex.needsUpdate = true;
+    if (!$('boardDlg').hidden) fillBoardList(rows, scope);
+  }
+  function fillBoardList(rows, scope) {
+    $('boardScope').textContent = `${scope} · 지금 접속 ${rows.length}명`;
+    const tb = $('boardList'); tb.textContent = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr'); if (r.me) tr.className = 'me';
+      [String(r.rank), r.name + (r.me ? ' (나)' : '') + (scope === '전체 사지방' ? ` · 제${r.hall}` : ''), fmtMin(r.t), fmtMin(r.T)].forEach((v, i) => {
+        const td = document.createElement(i === 1 ? 'th' : 'td'); td.textContent = v; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  }
+  let boardAt = 0;
+  function stepBoard(now) {
+    if (now - boardAt < (boardDirty ? 800 : 3000)) return;
+    boardAt = now; boardDirty = false; drawBoard();
+  }
+  function openBoard() { $('boardDlg').hidden = false; keys.clear(); drawBoard(); $('boardClose').focus(); }
+  {
+    const d = $('boardDlg');
+    const close = () => { d.hidden = true; };
+    $('boardClose').addEventListener('click', close);
+    d.addEventListener('click', e => { if (e.target === d) close(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !d.hidden) close(); });
+  }
+
   function salute() {
     me.saluteAt = Date.now();
     publishMe(); render();
@@ -3050,6 +3203,8 @@
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(pickables, false)[0];
+    const bhit = ray.intersectObject(boardMesh, false)[0];
+    if (bhit && (!hit || bhit.distance < hit.distance)) { openBoard(); return; }
     if (hit) { onPick(hit.object.userData.seat); return; }
     // a tap on the floor: walk there (seated, the floor does nothing)
     if (me.seat) return;
@@ -3184,7 +3339,7 @@
 
     const t = now * 0.001, motion = reduceMotion ? 0 : 1;
     const dt = Math.min(0.05, Math.max(0, (now - (loop.prev || now)) / 1000)); loop.prev = now;
-    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol();
+    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol(); stepBoard(now);
     soldiers.forEach(s => {
       const p = t + s.phase;
       // pop in on arrival
