@@ -3067,6 +3067,10 @@
     $('guideClose').addEventListener('click', close);
     g.addEventListener('click', e => { if (e.target === g) close(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !g.hidden) close(); });
+    // first visit on this browser: open it once by itself (not over the diary a QR code just opened)
+    let seen = true;
+    try { seen = localStorage.getItem('saji-guide-seen') === '1'; localStorage.setItem('saji-guide-seen', '1'); } catch (e) { /* no storage: don't nag */ }
+    if (!seen && !new URLSearchParams(location.search).has('d')) setTimeout(() => { if ($('diary').hidden) { g.hidden = false; keys.clear(); $('guideClose').focus(); } }, 1200);
   }
   $('btnSalute').addEventListener('click', salute);
   $('btnSit').addEventListener('click', () => {
