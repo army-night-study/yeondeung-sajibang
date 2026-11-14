@@ -1244,7 +1244,9 @@
   const tagLayer = document.getElementById('tags');
   const avatars = new Map();
   let people = [];
-  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true };
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true,
+    // where I stand when not seated (world x/z on the floor, ry = facing); start in the centre aisle
+    x: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 0.6, ry: Math.PI };
   // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
   // Text from other viewers is untrusted: strip control/invisible characters, cap the length, render as text only.
   const cleanDoing = s => (typeof s === 'string' ? s : '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, 16);
@@ -1321,9 +1323,16 @@
         a.where = where;
       }
       if (!seated) {
-        const i = standing.indexOf(p), col = i % 10, row = Math.floor(i / 10);
-        a.sol.holder.position.set(-2.7 + col * 0.6, 0, -0.2 + row * 0.5);
-      }
+        // walkers report their own spot; anyone without one (older page, offline 용사) lines up in the aisle
+        a.isMe = !!p.isMe;
+        if (p.isMe) { a.tx = me.x; a.tz = me.z; a.tr = me.ry; }
+        else if (p.x != null && p.z != null) { a.tx = p.x; a.tz = p.z; a.tr = p.ry != null ? p.ry : Math.PI; }
+        else {
+          const i = standing.indexOf(p), col = i % 10, row = Math.floor(i / 10);
+          a.tx = -2.7 + col * 0.6; a.tz = -0.2 + row * 0.5; a.tr = Math.PI;
+        }
+        if (!a.placed) { a.sol.holder.position.set(a.tx, 0, a.tz); a.sol.holder.rotation.y = a.tr; a.placed = true; }
+      } else a.placed = false;
       if (p.saluteAt !== a.saluteAt) {
         a.saluteAt = p.saluteAt;
         a.sol.saluteUntil = performance.now() + 2200;
@@ -1407,6 +1416,8 @@
         days: Number.isInteger(pr.days) ? num(pr.days, 0, 9999) || 0 : 0,
         gen: pr.gen === 1,
         nick: cleanNick(pr.nick),
+        // floor position while walking: anything outside the room (or not a number) is dropped
+        x: num(pr.x, -6, 6), z: num(pr.z, -5, 5), ry: num(pr.ry, -7, 7),
       });
     });
     if (!sawMe) list.push(me);
@@ -1414,7 +1425,10 @@
   }
   function publishMe() {
     if (!online || !hall) return;
-    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0, nick: me.nick }).catch(() => {});
+    hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0, nick: me.nick,
+      // seated, the seat says where I am; standing, my floor spot (cm precision)
+      x: me.seat ? null : Math.round(me.x * 100) / 100, z: me.seat ? null : Math.round(me.z * 100) / 100,
+      ry: me.seat ? null : Math.round(me.ry * 100) / 100 }).catch(() => {});
   }
   const byArrival = (a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1);
 
@@ -2236,6 +2250,9 @@
     if (quiet !== true) say('안내', '앉기를 누르거나 빈 PC석을 눌러 앉으세요. 드래그하면 둘러볼 수 있습니다.');
   }
   function sitAt(seat) {
+    route = null; keys.clear(); marker.visible = false;
+    // when I get up again I'll be standing in the aisle just behind this chair
+    const sp = standPoint(seat); me.x = sp.x; me.z = sp.z; me.ry = sp.ry;
     me.seat = seat.no; me.seatAt = Date.now();
     publishMe(); render();
     mode = 'seat';
@@ -2249,13 +2266,225 @@
   }
   function standUp() {
     if (!me.seat) return;
+    const seat = seats[me.seat - 1];
+    if (seat) { const sp = standPoint(seat); me.x = sp.x; me.z = sp.z; me.ry = sp.ry + Math.PI; }
     me.seat = null; publishMe(); render();
-    goOverview(true);
-    say(label(me), '자리에서 일어났습니다.');
+    enterWalkView();
+    say(label(me), '자리에서 일어났습니다. 방향키·WASD나 바닥을 눌러 걸을 수 있습니다.');
   }
   function onPick(seat) {
     if (seat.taken) { say('PC ' + pad(seat.no) + '번석', `${seat.name}이(가) 사용 중인 자리입니다. 번호판에 주황 점이 없는 자리를 골라주세요.`); return; }
-    sitAt(seat);
+    // already seated: move straight to the new seat (as before). standing: walk there, then sit
+    if (me.seat) { sitAt(seat); return; }
+    const sp = standPoint(seat);
+    walkTo(sp.x, sp.z, () => {
+      if (seat.taken) { say('PC ' + pad(seat.no) + '번석', `그 사이에 ${seat.name}이(가) 앉았습니다. 다른 빈 자리를 골라주세요.`); return; }
+      sitAt(seat);
+    }, `PC ${pad(seat.no)}번석으로 걸어가는 중입니다.`);
+  }
+
+  // ---------- walking: arrow keys / WASD, or tap the floor ----------
+  // The floor is a grid of 15 cm cells. A cell is blocked if a 20 cm-radius soldier standing there
+  // would touch a desk island (desks, PCs and the chair rows around them) or come within 35 cm of a wall.
+  // Keys move relative to the screen and slide along whatever they hit; a tap finds a way round with A*.
+  // Soldiers do not block each other (nobody gets stuck in the aisle).
+  const WALK_R = 0.2, SPEED = 1.6, CELL = 0.15;
+  const BOUND = { x0: -W / 2 + 0.35, x1: W / 2 - 0.35, z0: -D / 2 + 0.35, z1: D / 2 - 0.35 };
+  const BLOCKS = islandZ.map(zc => ({ x0: -3.27, x1: 3.27, z0: zc - 1.14, z1: zc + 1.14 }));
+  const free = (x, z) => x >= BOUND.x0 && x <= BOUND.x1 && z >= BOUND.z0 && z <= BOUND.z1 &&
+    !BLOCKS.some(b => x > b.x0 - WALK_R && x < b.x1 + WALK_R && z > b.z0 - WALK_R && z < b.z1 + WALK_R);
+  const GX = Math.floor((BOUND.x1 - BOUND.x0) / CELL) + 1, GZ = Math.floor((BOUND.z1 - BOUND.z0) / CELL) + 1;
+  const cx = i => BOUND.x0 + i * CELL, cz = j => BOUND.z0 + j * CELL;
+  const open = new Uint8Array(GX * GZ);
+  for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) open[j * GX + i] = free(cx(i), cz(j)) ? 1 : 0;
+  const toCell = (x, z) => [
+    Math.max(0, Math.min(GX - 1, Math.round((x - BOUND.x0) / CELL))),
+    Math.max(0, Math.min(GZ - 1, Math.round((z - BOUND.z0) / CELL))),
+  ];
+  // the walkable cell closest to a point (breadth-first from the point's own cell)
+  function nearestOpen(x, z) {
+    const [i0, j0] = toCell(x, z);
+    if (open[j0 * GX + i0]) return j0 * GX + i0;
+    const seen = new Uint8Array(GX * GZ), q = [j0 * GX + i0]; seen[q[0]] = 1;
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h], i = c % GX, j = (c - i) / GX;
+      if (open[c]) return c;
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([di, dj]) => {
+        const ni = i + di, nj = j + dj, n = nj * GX + ni;
+        if (ni >= 0 && nj >= 0 && ni < GX && nj < GZ && !seen[n]) { seen[n] = 1; q.push(n); }
+      });
+    }
+    return -1;
+  }
+  const lineFree = (ax, az, bx, bz) => {
+    const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.05);
+    for (let k = 1; k <= n; k++) if (!free(ax + (bx - ax) * k / n, az + (bz - az) * k / n)) return false;
+    return true;
+  };
+  // A* over the grid (8 directions, no cutting corners), then pulled straight wherever the line is clear
+  function findPath(ax, az, bx, bz) {
+    if (lineFree(ax, az, bx, bz)) return [[bx, bz]];
+    const s = nearestOpen(ax, az), g = nearestOpen(bx, bz);
+    if (s < 0 || g < 0) return null;
+    const gi = g % GX, gj = (g - gi) / GX;
+    const hcost = c => { const i = c % GX, j = (c - i) / GX, dx = Math.abs(i - gi), dz = Math.abs(j - gj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+    const gs = new Float32Array(GX * GZ).fill(Infinity), from = new Int32Array(GX * GZ).fill(-1), done = new Uint8Array(GX * GZ);
+    const heap = [];   // binary heap of [f, cell]
+    const push = (f, c) => { heap.push([f, c]); let k = heap.length - 1; while (k) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+    gs[s] = 0; push(hcost(s), s);
+    while (heap.length) {
+      const [, c] = pop();
+      if (done[c]) continue;
+      if (c === g) break;
+      done[c] = 1;
+      const i = c % GX, j = (c - i) / GX;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= GX || nj >= GZ) continue;
+        const n = nj * GX + ni;
+        if (!open[n] || done[n]) continue;
+        if (di && dj && (!open[j * GX + ni] || !open[nj * GX + i])) continue;
+        const ng = gs[c] + (di && dj ? 1.414 : 1);
+        if (ng < gs[n]) { gs[n] = ng; from[n] = c; push(ng + hcost(n), n); }
+      }
+    }
+    if (s !== g && from[g] < 0) return null;
+    const cells = [];
+    for (let c = g; c >= 0 && c !== s; c = from[c]) cells.unshift(c);
+    const pts = cells.map(c => { const i = c % GX; return [cx(i), cz((c - i) / GX)]; });
+    if (free(bx, bz)) pts.push([bx, bz]);
+    // string-pulling: from each corner, skip ahead to the farthest point still in plain sight
+    const out = []; let px = ax, pz = az, k = 0;
+    while (k < pts.length) {
+      let far = k;
+      for (let m = pts.length - 1; m > k; m--) if (lineFree(px, pz, pts[m][0], pts[m][1])) { far = m; break; }
+      out.push(pts[far]); [px, pz] = pts[far]; k = far + 1;
+    }
+    return out;
+  }
+  // where you stand to sit at a seat: the aisle just behind its chair, facing the desk
+  function standPoint(seat) {
+    const p = seat.group.localToWorld(new THREE.Vector3(0, 0, 1.12));
+    return { x: p.x, z: p.z, ry: seat.group.rotation.y };
+  }
+
+  const keys = new Set();
+  const KEYMAP = { KeyW: 'f', ArrowUp: 'f', KeyS: 'b', ArrowDown: 'b', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
+  const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+  window.addEventListener('keydown', e => {
+    const k = KEYMAP[e.code];
+    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden) return;
+    e.preventDefault();
+    if (me.seat) return;   // seated: keys do nothing until 일어서기
+    keys.add(k);
+  });
+  window.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys.delete(k); });
+  window.addEventListener('blur', () => keys.clear());
+  document.addEventListener('focusin', e => { if (typing(e.target)) keys.clear(); });
+
+  let route = null;   // { pts: [[x, z], …], done }
+  const marker = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.17, 32), new THREE.MeshBasicMaterial({ color: 0xd8c27a, transparent: true, opacity: 0.85, depthWrite: false }));
+  marker.rotation.x = -Math.PI / 2; marker.visible = false; scene.add(marker);
+  function walkTo(x, z, done, msg) {
+    const c = nearestOpen(x, z);
+    if (c < 0) return;
+    const i = c % GX, gx = free(x, z) ? x : cx(i), gz = free(x, z) ? z : cz((c - i) / GX);
+    const pts = findPath(me.x, me.z, gx, gz);
+    if (!pts) { say('이동', '그곳으로는 갈 수 없어요.'); return; }
+    route = { pts, done };
+    marker.position.set(gx, 0.012, gz); marker.visible = true;
+    if (mode !== 'walk') enterWalkView();
+    if (msg) say('이동', msg);
+  }
+  // the camera keeps its angle but moves in to follow me
+  function enterWalkView() {
+    mode = 'walk';
+    controls.minDistance = 1.2; controls.maxDistance = 20;
+    const target = new THREE.Vector3(me.x, 0.5, me.z);
+    const dir = camera.position.clone().sub(controls.target);
+    const dist = Math.min(7, Math.max(3.5, dir.length()));
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0.7, 1);
+    flyTo(target.clone().add(dir.normalize().multiplyScalar(dist)), target);
+  }
+
+  // my position goes out with presence at most 8 times a second while moving; the last spot always goes
+  let posSentAt = 0, posTimer = null;
+  function publishPos() {
+    const now = performance.now(), wait = 125 - (now - posSentAt);
+    if (wait <= 0) { posSentAt = now; publishMe(); return; }
+    if (!posTimer) posTimer = setTimeout(() => { posTimer = null; posSentAt = performance.now(); publishMe(); }, wait);
+  }
+
+  const fwd = new THREE.Vector3(), camShift = new THREE.Vector3();
+  let meWalking = false;
+  function stepWalk(dt) {
+    let dx = 0, dz = 0, step = SPEED * dt;
+    if (!me.seat) {
+      const fx = (keys.has('r') ? 1 : 0) - (keys.has('l') ? 1 : 0), fz = (keys.has('f') ? 1 : 0) - (keys.has('b') ? 1 : 0);
+      if (fx || fz) {
+        if (route) { route = null; marker.visible = false; }
+        if (mode !== 'walk') enterWalkView();
+        camera.getWorldDirection(fwd); fwd.y = 0;
+        if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
+        fwd.normalize();
+        dx = fwd.x * fz - fwd.z * fx; dz = fwd.z * fz + fwd.x * fx;
+      } else if (route) {
+        const [tx, tz] = route.pts[0], d = Math.hypot(tx - me.x, tz - me.z);
+        if (d <= step) {
+          // reached a corner: snap to it and head for the next one
+          if (free(tx, tz)) { me.x = tx; me.z = tz; }
+          route.pts.shift(); step -= d;
+          if (!route.pts.length) {
+            const done = route.done; route = null; marker.visible = false;
+            publishPos(); meWalking = false;
+            if (done) done();
+            return;
+          }
+        }
+        const [nx, nz] = route.pts[0];
+        dx = nx - me.x; dz = nz - me.z;
+      }
+    }
+    const len = Math.hypot(dx, dz);
+    if (!len) { meWalking = false; return; }
+    dx /= len; dz /= len;
+    const ox = me.x, oz = me.z;
+    // slide: try each axis on its own so a wall only stops the part of the move that goes into it
+    if (free(me.x + dx * step, me.z)) me.x += dx * step;
+    if (free(me.x, me.z + dz * step)) me.z += dz * step;
+    meWalking = me.x !== ox || me.z !== oz;
+    if (meWalking) { me.ry = Math.atan2(-dx, -dz); publishPos(); }
+    else if (route) { route = null; marker.visible = false; }   // stuck (should not happen): give up quietly
+  }
+  const angleTo = (a, b, k) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return a + d * k; };
+  // standing soldiers: mine follows me exactly; others glide to the last spot they reported
+  function moveAvatars(dt) {
+    avatars.forEach(a => {
+      const h = a.sol && a.sol.holder;
+      if (!h) return;
+      if (a.isMe) {
+        h.position.set(me.x, 0, me.z);
+        h.rotation.y = angleTo(h.rotation.y, me.ry, Math.min(1, dt * 14));
+        a.sol.walking = meWalking;
+        return;
+      }
+      if (a.tx == null) return;
+      const ddx = a.tx - h.position.x, ddz = a.tz - h.position.z, d = Math.hypot(ddx, ddz);
+      if (d > 3) { h.position.set(a.tx, 0, a.tz); a.sol.walking = false; }
+      else if (d > 0.01) {
+        const s = Math.min(d, Math.max(SPEED * 1.25 * dt, d * dt * 5));
+        h.position.x += ddx / d * s; h.position.z += ddz / d * s;
+        a.sol.walking = true;
+      } else a.sol.walking = false;
+      h.rotation.y = angleTo(h.rotation.y, a.tr, Math.min(1, dt * 10));
+    });
+  }
+  function followCamera(dt) {
+    if (mode !== 'walk' || fly) return;
+    camShift.set(me.x, 0.5, me.z).sub(controls.target).multiplyScalar(Math.min(1, dt * 4));
+    camera.position.add(camShift); controls.target.add(camShift);
   }
   function salute() {
     me.saluteAt = Date.now();
@@ -2279,8 +2508,12 @@
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(pickables, false)[0];
-    if (hit) onPick(hit.object.userData.seat);
+    if (hit) { onPick(hit.object.userData.seat); return; }
+    // a tap on the floor: walk there (seated, the floor does nothing)
+    if (me.seat) return;
+    if (ray.ray.intersectPlane(floorPlane, floorHit) && Math.abs(floorHit.x) < W / 2 && Math.abs(floorHit.z) < D / 2) walkTo(floorHit.x, floorHit.z);
   });
+  const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), floorHit = new THREE.Vector3();
 
   $('btnOverview').addEventListener('click', goOverview);
   $('btnSalute').addEventListener('click', salute);
@@ -2395,6 +2628,8 @@
     }
 
     const t = now * 0.001, motion = reduceMotion ? 0 : 1;
+    const dt = Math.min(0.05, Math.max(0, (now - (loop.prev || now)) / 1000)); loop.prev = now;
+    stepWalk(dt); moveAvatars(dt); followCamera(dt);
     soldiers.forEach(s => {
       const p = t + s.phase;
       // pop in on arrival
@@ -2405,6 +2640,10 @@
       s.arms[1].g.visible = !saluting;
       if (saluting) { s.head.rotation.set(0, 0, 0); if (s.flip) s.flip.visible = false; return; }
       if (s.standing) {
+        // a little bouncing waddle while walking
+        const w = s.walking && motion, step = t * 11 + s.phase;
+        s.root.position.y = w ? Math.abs(Math.sin(step)) * 0.035 : 0;
+        s.root.rotation.z = w ? Math.sin(step) * 0.09 : 0;
         s.head.rotation.x = Math.sin(p * 0.8) * 0.04 * motion;
         s.head.rotation.y = Math.sin(p * 0.3) * 0.3 * motion;
         return;
