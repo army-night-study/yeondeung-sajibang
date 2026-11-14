@@ -231,6 +231,8 @@
     overflow: hidden; text-overflow: ellipsis;
   }
   .tag .doing:empty { display: none; }
+  /* small caption over the status so it reads as "지금 하는 일" */
+  .tag .doing::before { content: '지금 하는 일'; display: block; margin-bottom: 2px; font-size: 9px; font-weight: 600; letter-spacing: 0.08em; opacity: 0.65; }
   .tag .rec { display: block; margin-top: 3px; font-size: 10px; font-weight: 600; color: #7a2e1c; }
   .tag .rec:empty { display: none; }
   .tag .rec .gen { display: inline-block; margin-right: 4px; padding: 0 4px; border-radius: 3px; background: #7a2e1c; color: #fff4dc; font-size: 9px; letter-spacing: 0.04em; }
