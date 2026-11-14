@@ -437,7 +437,7 @@
     <div class="diary-head">
       <div>
         <div class="eyebrow" id="boardScope">전체 사지방</div>
-        <h2 id="boardTitle">연등 시간판</h2>
+        <h2 id="boardTitle">지금 가장 오래 연등한 용사</h2>
       </div>
       <button id="boardClose" type="button">닫기</button>
     </div>
@@ -3126,9 +3126,9 @@
     const ctx = boardCanvas.ctx, w = 640, h = 512, rows = boardRows();
     ctx.fillStyle = '#1f2a1d'; ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 6);
-    center(ctx, '연등 시간판', `44px ${DISPLAY}`, '#f1eedc', w / 2, 46);
+    center(ctx, '지금 가장 오래 연등한 용사', `40px ${DISPLAY}`, '#f1eedc', w / 2, 46);
     const scope = online && lobbyRef && !privateCode ? '전체 사지방' : privateCode ? '친구 사지방' : '오프라인 체험';
-    center(ctx, `${scope} · 지금 접속 ${rows.length}명 · 누적 시간 순`, `20px ${BODY}`, '#b9c0a8', w / 2, 88);
+    center(ctx, `${scope} · 지금 접속 중 ${rows.length}명 · 누적 연등 시간 순`, `20px ${BODY}`, '#b9c0a8', w / 2, 88);
     const cols = { rank: 44, name: 92, today: 430, total: 604 };
     ctx.font = `600 18px ${BODY}`; ctx.fillStyle = '#8f977f'; ctx.textBaseline = 'middle';
     ctx.textAlign = 'left'; ctx.fillText('순위', 26, 124); ctx.fillText('이름', cols.name, 124);
@@ -3157,7 +3157,7 @@
     if (!$('boardDlg').hidden) fillBoardList(rows, scope);
   }
   function fillBoardList(rows, scope) {
-    $('boardScope').textContent = `${scope} · 지금 접속 ${rows.length}명`;
+    $('boardScope').textContent = `${scope} · 지금 접속 중 ${rows.length}명 · 누적 연등 시간 순`;
     const tb = $('boardList'); tb.textContent = '';
     rows.forEach(r => {
       const tr = document.createElement('tr'); if (r.me) tr.className = 'me';
