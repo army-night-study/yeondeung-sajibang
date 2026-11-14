@@ -599,30 +599,35 @@
   floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
   floorTex.repeat.set(W / 2.4, D / 2.4);
 
-  // night outside a mountain base: stars, two ridges, perimeter fence lights (the moon is a separate 3D sphere)
-  const backdropTex = canvasTex(1024, 384, (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#03060c'); g.addColorStop(0.55, '#0f1828'); g.addColorStop(1, '#141c28');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    for (let i = 0; i < 420; i++) {
-      ctx.fillStyle = `rgba(255,255,255,${0.25 + rand() * 0.75})`;
-      const s = rand() < 0.08 ? 2 : 1;
-      ctx.fillRect(rand() * w, rand() * h * 0.55, s, s);
-    }
-    const ridge = (base, amp, color, ph) => {
+  // The sky all round the base, painted for the inside of a dome (row 0 = straight up, the bottom row
+  // a little below the horizon): stars and a ring of mountain ridges at night, blue sky and green
+  // ridges by day. Ridge shapes repeat exactly once around, so there is no seam.
+  const DOME_BELOW = 0.2;   // radians below the horizon the dome reaches
+  const elevY = (deg, h) => h * (90 - deg) / (90 + DOME_BELOW * 180 / Math.PI);
+  function domeRidges(ctx, w, h, colors) {
+    const TAU = Math.PI * 2;
+    [[4.6, 2.2, 3, 7, colors[0], 0.7], [2.4, 1.3, 5, 11, colors[1], 2.9]].forEach(([base, amp, k1, k2, color, ph]) => {
       ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(0, h);
-      for (let x = 0; x <= w; x += 4) ctx.lineTo(x, base - Math.sin(x * 0.008 + ph) * amp - Math.sin(x * 0.023 + ph * 2) * amp * 0.45);
+      for (let x = 0; x <= w; x += 4) {
+        const u = x / w * TAU;
+        const e = base + amp * (Math.sin(u * k1 + ph) + 0.45 * Math.sin(u * k2 + ph * 2.3) + 0.25 * Math.sin(u * 23 + ph));
+        ctx.lineTo(x, elevY(e, h));
+      }
       ctx.lineTo(w, h); ctx.fill();
-    };
-    ridge(h * 0.55, 34, '#0a1119', rand() * 6);
-    ridge(h * 0.68, 20, '#06090d', rand() * 6);
-    for (let x = 10; x < w; x += 40 + rand() * 30) {
-      const y = h * 0.72;
-      const lg = ctx.createRadialGradient(x, y, 0, x, y, 10);
-      lg.addColorStop(0, 'rgba(255,214,140,0.9)'); lg.addColorStop(1, 'rgba(255,214,140,0)');
-      ctx.fillStyle = lg; ctx.fillRect(x - 10, y - 10, 20, 20);
+    });
+  }
+  const backdropTex = canvasTex(2048, 512, (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#02040a'); g.addColorStop(0.6, '#0b1322'); g.addColorStop(0.88, '#18212f'); g.addColorStop(1, '#0d1219');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1400; i++) {
+      // fewer stars toward the horizon haze
+      const y = Math.pow(rand(), 1.4) * elevY(6, h);
+      ctx.fillStyle = `rgba(255,255,255,${0.2 + rand() * 0.8})`;
+      const s = rand() < 0.06 ? 2 : 1;
+      ctx.fillRect(rand() * w, y, s, s);
     }
-    ctx.fillStyle = '#ff5a4a'; ctx.fillRect(w * 0.83, h * 0.47, 3, 3);
+    domeRidges(ctx, w, h, ['#0a1119', '#05080c']);
   }).tex;
 
   // wood grain for the study carrels: light oak top, warmer walnut-ish partitions
@@ -698,30 +703,29 @@
   WIN_X.forEach(x => { wallPiece(edge, x - WIN_W / 2, WIN_Y0, WIN_Y1); edge = x + WIN_W / 2; });
   wallPiece(edge, W / 2, WIN_Y0, WIN_Y1);
 
-  const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(42, 15.75), new THREE.MeshBasicMaterial({ map: backdropTex }));
-  backdrop.position.set(0, 2, -14); scene.add(backdrop);
-  // the daytime view out of the windows, faded in over the night sky as the sun comes up
-  const daySky = canvasTex(1024, 384, (ctx, w, h) => {
+  const domeGeo = () => new THREE.SphereGeometry(92, 64, 20, 0, Math.PI * 2, 0, Math.PI / 2 + DOME_BELOW);
+  const backdrop = new THREE.Mesh(domeGeo(), new THREE.MeshBasicMaterial({ map: backdropTex, side: THREE.BackSide, depthWrite: false, fog: false }));
+  backdrop.renderOrder = -2; scene.add(backdrop);
+  // the daytime sky, faded in over the night dome as the sun comes up
+  const daySky = canvasTex(2048, 512, (ctx, w, h) => {
     const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#4f86c6'); g.addColorStop(0.5, '#9cc3e6'); g.addColorStop(0.62, '#d9e8f2'); g.addColorStop(1, '#c9d6cf');
+    g.addColorStop(0, '#3f78bd'); g.addColorStop(0.55, '#8fbbe3'); g.addColorStop(0.86, '#d9e8f2'); g.addColorStop(1, '#c4d2cb');
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    for (let i = 0; i < 9; i++) {   // a few soft clouds
-      const cx = rand() * w, cy = 30 + rand() * h * 0.3, r = 30 + rand() * 50;
+    for (let i = 0; i < 26; i++) {   // soft clouds, flattened toward the horizon
+      const cx = rand() * w, cy = elevY(12 + rand() * 40, h), r = 30 + rand() * 70;
       const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.8);
-      cg.addColorStop(0, 'rgba(255,255,255,0.75)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = cg; ctx.fillRect(cx - r * 2, cy - r, r * 4, r * 2);
+      cg.addColorStop(0, 'rgba(255,255,255,0.7)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.save(); ctx.translate(cx, cy); ctx.scale(1, 0.45); ctx.translate(-cx, -cy);
+      ctx.fillStyle = cg; ctx.fillRect(cx - r * 2, cy - r * 2, r * 4, r * 4); ctx.restore();
     }
-    const ridge = (base, amp, color, ph) => {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(0, h);
-      for (let x = 0; x <= w; x += 4) ctx.lineTo(x, base - Math.sin(x * 0.008 + ph) * amp - Math.sin(x * 0.023 + ph * 2) * amp * 0.45);
-      ctx.lineTo(w, h); ctx.fill();
-    };
-    ridge(h * 0.55, 34, '#7d9a86', 1.3);
-    ridge(h * 0.68, 20, '#4f6b52', 4.1);
+    domeRidges(ctx, w, h, ['#7d9a86', '#4f6b52']);
   }).tex;
-  const daySkyMat = new THREE.MeshBasicMaterial({ map: daySky, transparent: true, opacity: 0, depthWrite: false });
-  const dayBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(42, 15.75), daySkyMat);
-  dayBackdrop.position.set(0, 2, -13.95); dayBackdrop.visible = false; scene.add(dayBackdrop);
+  const daySkyMat = new THREE.MeshBasicMaterial({ map: daySky, transparent: true, opacity: 0, depthWrite: false, side: THREE.BackSide, fog: false });
+  const dayBackdrop = new THREE.Mesh(domeGeo(), daySkyMat);
+  dayBackdrop.scale.setScalar(0.995); dayBackdrop.renderOrder = -1; dayBackdrop.visible = false; scene.add(dayBackdrop);
+  // distant ground and buildings fade into the sky
+  scene.fog = new THREE.Fog(0x0b0f0c, 38, 92);
+  let ext = null;   // the base outside (built further down); updateDaylight lights it
 
   // the moon: NASA SVS CGI Moon Kit (LRO LROC colour mosaic + LOLA laser-altimeter elevation, 1K)
   const moonUniforms = {
@@ -766,12 +770,13 @@
       }`,
   }));
   moon.rotation.y = -Math.PI / 2; // turn the near side (longitude 0) toward the room
-  // far enough out to sit in the middle window seen from the desks, and still clear the wall top in the overview
-  moon.position.set(0.3, 1.9, -12); moon.scale.setScalar(1.45); scene.add(moon);
+  // far out over the southern ridges, low enough to fill the middle window from the desks and high
+  // enough to clear the mountains; big, as the moon looks when it has just risen
+  moon.position.set(1.9, 10.6, -76); moon.scale.setScalar(7.2); scene.add(moon);
   // warm glow around the moon: a tight bright ring and a wide faint one
-  const moonHalos = [[4.4, 0.5], [10, 0.16]].map(([size, opacity], i) => {
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffd27a, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
-    halo.position.set(0.3, 1.9, -12.7 - i * 0.2); halo.userData.full = opacity; scene.add(halo);
+  const moonHalos = [[22, 0.5], [50, 0.16]].map(([size, opacity], i) => {
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffd27a, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    halo.position.set(1.9, 10.6, -79 - i); halo.userData.full = opacity; scene.add(halo);
     return halo;
   });
   {
@@ -2624,6 +2629,8 @@
     daySkyMat.opacity = day;
     daySkyMat.color.copy(cWhite).lerp(cSkyGold, gold * 0.7);
     scene.background.copy(cNight).lerp(cDayBg, day);
+    scene.fog.color.copy(scene.background);
+    if (ext) ext.update(day);
     // the moon fades out in daylight
     moon.visible = day < 0.95;
     moonHalos.forEach(h => (h.material.opacity = h.userData.full * (1 - day)));
@@ -3173,6 +3180,164 @@
     if (now - boardAt < (boardDirty ? 800 : 3000)) return;
     boardAt = now; boardDirty = false; drawBoard();
   }
+  // ---------- the base outside ----------
+  // The 사지방 is one room at the east end of a barracks block. Its two walls that face the overview
+  // camera (front, east) are cut at waist height on the outside, like a model with the walls sliced
+  // away; the back and west walls are solid, and the rest of the block runs on to the west. Around it:
+  // the road and parade ground, a second block across the yard, the flagpole, streetlights, a fence
+  // with a guard post, and trees, under the sky dome. Everything is plain boxes merged into a few
+  // draw calls. At night the other blocks go dark at 22:00 (lights-out in the 생활관) except the
+  // duty rooms, while the 사지방 stays lit for 연등.
+  ext = (() => {
+    const G = new THREE.Group(); scene.add(G);
+    const GY = -0.25;                                     // outside ground level (the room floor is 0)
+    const mat = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.92 }, o));
+    const C = {
+      wall: mat(0xb3ab94), band: mat(0x4e5a3d), trim: mat(0x3d4633), roof: mat(0x505457), concrete: mat(0x7d7d77),
+      asphalt: mat(0x343636), curb: mat(0x95948b), pole: mat(0x6e7378, { roughness: 0.5 }), post: mat(0x55595c, { roughness: 0.6 }),
+      trunk: mat(0x4b3a2a), pine: mat(0x2f4a30), pine2: mat(0x3a5636), dirt: mat(0x7a6b52), line: mat(0xcfcdc3), hut: mat(0xaca58f),
+    };
+    const add = (m, x, y, z, ry = 0) => { m.position.set(x, y, z); m.rotation.y = ry; G.add(m); return m; };
+    const slab = (x0, x1, y0, y1, z0, z1, m) => add(box(x1 - x0, y1 - y0, z1 - z0, m), (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+
+    // ground: grass to the fog, an apron and road of asphalt, the dirt parade ground
+    const grassTex = canvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#3c4a30'; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 2400; i++) { ctx.fillStyle = rand() < 0.5 ? 'rgba(80,98,58,0.5)' : 'rgba(34,44,26,0.5)'; ctx.fillRect(rand() * w, rand() * h, 2, 2); }
+    }).tex;
+    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(36, 36);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(95, 48), new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = GY - 0.01; ground.userData.keep = true; G.add(ground);
+    const flat = (x0, x1, z0, z1, y, m) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), m); p.rotation.x = -Math.PI / 2; p.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); G.add(p); return p; };
+    flat(-36, 14, -8, 8.5, GY + 0.004, C.asphalt);          // apron and the road along the front
+    flat(9.5, 13, -40, 48, GY + 0.006, C.asphalt);          // road down the east side to the gate
+    flat(-34, 8, 11, 33, GY + 0.005, C.dirt);               // 연병장
+    [[-34, 8, 11, 11.15], [-34, 8, 32.85, 33], [-34, -33.85, 11, 33], [7.85, 8, 11, 33]].forEach(([a, b, c, d]) => flat(a, b, c, d, GY + 0.008, C.line));
+    slab(-36, 14, GY, GY + 0.12, 8.5, 8.75, C.curb);        // curb between road and yard
+
+    // this block: foundation under the room, solid back and west walls (window holes at the back),
+    // waist-high cut walls at the front and east (with the doorway left open), a step at the door
+    slab(-W / 2 - 0.25, W / 2 + 0.25, GY, -0.006, -D / 2 - 0.25, D / 2 + 0.25, C.concrete);
+    const T0 = 0.01, T1 = 0.24, TOP = H + 0.2;
+    slab(-W / 2 - T1, -W / 2 - T0, GY, TOP, -D / 2 - T1, D / 2 + T1, C.wall);                     // west
+    const back = (x0, x1, y0, y1) => slab(x0, x1, y0, y1, -D / 2 - T1, -D / 2 - T0, C.wall);
+    back(-W / 2 - T1, W / 2 + T1, GY, WIN_Y0); back(-W / 2 - T1, W / 2 + T1, WIN_Y1, TOP);
+    let ex = -W / 2 - T1;
+    WIN_X.forEach(x => { back(ex, x - WIN_W / 2, WIN_Y0, WIN_Y1); ex = x + WIN_W / 2; });
+    back(ex, W / 2 + T1, WIN_Y0, WIN_Y1);
+    slab(-W / 2 - T1, W / 2 + T1, GY, 0.95, D / 2 + T0, D / 2 + T1, C.wall);                      // front, cut
+    slab(-W / 2 - T1, W / 2 + T1, 0.95, 1.0, D / 2 + T0 - 0.02, D / 2 + T1 + 0.02, C.trim);
+    const d0 = DOOR_Z - DOOR_W / 2 - 0.05, d1 = DOOR_Z + DOOR_W / 2 + 0.05;
+    [[-D / 2 - T1, d0], [d1, D / 2 + T1]].forEach(([z0, z1]) => {                                    // east, cut
+      slab(W / 2 + T0, W / 2 + T1, GY, 0.95, z0, z1, C.wall);
+      slab(W / 2 + T0 - 0.02, W / 2 + T1 + 0.02, 0.95, 1.0, z0, z1, C.trim);
+    });
+    slab(W / 2, W / 2 + 1.6, GY, -0.004, DOOR_Z - 0.9, DOOR_Z + 0.9, C.concrete);                 // door step
+    // olive band along the bottom of the outside walls
+    slab(-W / 2 - T1 - 0.01, -W / 2 - T1, GY, 0.7, -D / 2 - T1, D / 2 + T1, C.band);
+
+    // a block: walls, olive band, flat roof with a parapet, and rows of windows on both long faces.
+    // Windows share two materials so they can light up together: rooms, and duty rooms (always lit at night).
+    const winTex = canvasTex(64, 48, (ctx, w, h) => {
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#3a3f33'; ctx.fillRect(0, 0, w, 3); ctx.fillRect(0, h - 3, w, 3); ctx.fillRect(0, 0, 3, h); ctx.fillRect(w - 3, 0, 3, h); ctx.fillRect(w / 2 - 1.5, 0, 3, h);
+    }).tex;
+    const winMat = new THREE.MeshStandardMaterial({ map: winTex, color: 0x1e2a33, roughness: 0.25, emissive: 0xffd9a0, emissiveMap: winTex, emissiveIntensity: 0 });
+    const dutyMat = winMat.clone();
+    let nWin = 0;
+    function block(x0, x1, z0, z1, floors) {
+      const top = GY + floors * 3.1 + 0.3;
+      slab(x0, x1, GY, top, z0, z1, C.wall);
+      slab(x0 - 0.01, x1 + 0.01, GY, GY + 0.95, z0 - 0.01, z1 + 0.01, C.band);
+      slab(x0 - 0.15, x1 + 0.15, top, top + 0.18, z0 - 0.15, z1 + 0.15, C.roof);
+      for (let f = 0; f < floors; f++) {
+        const y = GY + 1.75 + f * 3.1;
+        for (let x = x0 + 1.6; x < x1 - 1.0; x += 3.0) {
+          [[z1 + 0.012, 0], [z0 - 0.012, Math.PI]].forEach(([z, ry]) => {
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.05), (nWin++ % 9 === 4) ? dutyMat : winMat);
+            add(m, x + 0.75, y, z, ry);
+          });
+        }
+      }
+      // entrance with a small porch light in the middle of the front
+      const mx = (x0 + x1) / 2;
+      slab(mx - 1.0, mx + 1.0, GY, GY + 2.3, z1, z1 + 0.05, C.trim);
+      slab(mx - 1.4, mx + 1.4, GY + 2.4, GY + 2.55, z1, z1 + 1.2, C.roof);
+    }
+    block(-32, -W / 2 - T1, -D / 2 - T1, D / 2 + T1, 1);   // the rest of this block, to the west
+    block(-30, -6, -34, -25, 2);                          // across the back yard, leaving the view south clear
+    block(10, 30, -32, -23, 2);
+
+    // flagpole with the 태극기 at the corner of the parade ground
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 9, 10), C.pole), -30, GY + 4.5, 13.5);
+    slab(-30.6, -29.4, GY, GY + 0.35, 12.9, 14.1, C.concrete);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2), SGT.flag); flag.userData.keep = true;
+    add(flag, -29.08, GY + 8.3, 13.5);
+
+    // streetlights along the front road and the east road; their light pools show at night
+    const lamps = [];
+    const lampHead = new THREE.MeshBasicMaterial({ color: 0xffe2a8 });
+    const poolMat = new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffcf8a, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    const lampAt = (x, z, ry) => {
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 4.2, 8), C.pole), x, GY + 2.1, z);
+      const arm = box(0.9, 0.06, 0.06, C.pole); add(arm, x + Math.cos(ry) * 0.4, GY + 4.15, z - Math.sin(ry) * 0.4, ry);
+      const bulb = box(0.34, 0.08, 0.18, lampHead); bulb.userData.keep = true; add(bulb, x + Math.cos(ry) * 0.8, GY + 4.08, z - Math.sin(ry) * 0.8, ry);
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), poolMat); pool.rotation.x = -Math.PI / 2; pool.userData.keep = true;
+      pool.position.set(x + Math.cos(ry) * 0.8, GY + 0.02, z - Math.sin(ry) * 0.8); G.add(pool);
+      lamps.push(bulb, pool);
+    };
+    for (let x = -30; x <= 6; x += 9) lampAt(x, 9.2, Math.PI / 2);   // arms reach out over the road (-z)
+    for (let z = -30; z <= 40; z += 10) if (z < -8 || z > 9) lampAt(13.6, z, Math.PI);
+
+    // perimeter fence: posts, three wires, a leaning barbed-wire arm; a gap for the gate on the east road
+    const F = 46;
+    const fenceSide = (ax, az, bx, bz) => {
+      const len = Math.hypot(bx - ax, bz - az), n = Math.round(len / 4), ry = -Math.atan2(bz - az, bx - ax);
+      for (let i = 0; i <= n; i++) {
+        const x = ax + (bx - ax) * i / n, z = az + (bz - az) * i / n;
+        if (Math.abs(x - 11.25) < 3 && z > F - 1) continue;   // gate
+        add(box(0.08, 2.6, 0.08, C.post), x, GY + 1.3, z);
+      }
+      [0.6, 1.3, 2.0, 2.55].forEach(y => add(box(len, 0.025, 0.025, C.post), (ax + bx) / 2, GY + y, (az + bz) / 2, ry));
+    };
+    fenceSide(-F, -F, F, -F); fenceSide(F, -F, F, F); fenceSide(-F, -F, -F, F);
+    fenceSide(-F, F, 8.2, F); fenceSide(14.3, F, F, F);
+    // guard post at the gate, its window lit day and night
+    slab(15, 18, GY, GY + 2.7, F - 3.6, F - 0.6, C.hut);
+    slab(14.8, 18.2, GY + 2.7, GY + 2.9, F - 3.8, F - 0.4, C.roof);
+    add(new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), dutyMat), 14.98, GY + 1.6, F - 2.1, -Math.PI / 2);
+    add(box(3.4, 0.08, 0.08, mat(0xc23b2b)), 11.3, GY + 1.0, F - 0.4);   // the gate bar
+
+    // pines: a few inside the fence, a wood outside it
+    for (let i = 0; i < 70; i++) {
+      const a = rand() * Math.PI * 2, r = i < 14 ? 30 + rand() * 12 : 50 + rand() * 32;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (i < 14 && (Math.abs(x) < 34 && z > -10 && z < 36)) continue;   // keep the yard and road clear
+      const s = 0.8 + rand() * 0.9;
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.12 * s, 0.18 * s, 1.2 * s, 6), C.trunk), x, GY + 0.6 * s, z);
+      add(new THREE.Mesh(new THREE.ConeGeometry(1.3 * s, 3.6 * s, 7), rand() < 0.5 ? C.pine : C.pine2), x, GY + 2.6 * s, z);
+      add(new THREE.Mesh(new THREE.ConeGeometry(0.95 * s, 2.6 * s, 7), C.pine2), x, GY + 3.8 * s, z);
+    }
+
+    flatten(G);
+
+    // windows: the 생활관 is lit in the evening and goes dark at 22:00 (취침); duty rooms and the guard
+    // post stay lit all night. Streetlights come on at dusk.
+    const update = day => {
+      const h = new Date().getHours();
+      const night = 1 - day;
+      const roomsLit = h >= 17 && h < 22;
+      winMat.emissiveIntensity = roomsLit ? 0.9 * night : 0;
+      dutyMat.emissiveIntensity = 0.9 * night;
+      winMat.color.setHex(day > 0.5 ? 0x6f8794 : 0x1e2a33); dutyMat.color.copy(winMat.color);
+      const on = night > 0.4;
+      lamps.forEach(l => (l.visible = on));
+      poolMat.opacity = 0.55 * night;
+    };
+    return { update };
+  })();
+  ext.update(Math.max(0, dayLevel));
+
   function openBoard() { $('boardDlg').hidden = false; keys.clear(); drawBoard(); $('boardClose').focus(); }
   {
     const d = $('boardDlg');
@@ -3313,6 +3478,11 @@
       camera.position.lerpVectors(fly.p0, fly.p1, e);
       controls.target.lerpVectors(fly.t0, fly.t1, e);
       if (k >= 1) fly = null;
+    } else {
+      // panning can't wander off the base: keep the point the camera circles inside the yard
+      const t = controls.target;
+      const nx = Math.max(-18, Math.min(18, t.x)), ny = Math.max(0, Math.min(5, t.y)), nz = Math.max(-16, Math.min(18, t.z));
+      if (nx !== t.x || ny !== t.y || nz !== t.z) { camera.position.x += nx - t.x; camera.position.y += ny - t.y; camera.position.z += nz - t.z; t.set(nx, ny, nz); }
     }
 
     // if the camera ever ends up at NaN (e.g. it was placed while the page had no size), start over from the overview
