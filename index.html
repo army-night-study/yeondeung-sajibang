@@ -127,6 +127,15 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   }
   .diary-card section { display: grid; gap: 12px; }
+  .guide-card { display: grid; gap: 10px; max-width: 480px; }
+  .guide-lead { margin: 0; font-size: 14px; line-height: 1.55; }
+  .guide-card details { border-top: 1px solid rgba(42, 38, 51, 0.14); padding-top: 8px; }
+  .guide-card summary { cursor: pointer; font-family: "Gowun Batang", serif; font-weight: 700; font-size: 16px; padding: 4px 0; }
+  .guide-card summary:focus-visible { outline: 2px solid #7a5a2e; outline-offset: 2px; }
+  .guide-card ul { margin: 6px 0 4px; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.55; }
+  .guide-time { width: 100%; margin: 6px 0 4px; border-collapse: collapse; font-size: 13.5px; line-height: 1.45; }
+  .guide-time th { text-align: left; white-space: nowrap; padding: 4px 12px 4px 0; vertical-align: top; font-variant-numeric: tabular-nums; color: #2f3a28; }
+  .guide-time td { padding: 4px 0; }
   .diary-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .diary-head .eyebrow { font-size: 10px; letter-spacing: 0.16em; font-weight: 600; color: #7a5a2e; }
   .diary-head h2 { margin: 2px 0 0; font-family: "Gowun Batang", serif; font-weight: 700; font-size: 24px; line-height: 1.2; }
@@ -281,8 +290,9 @@
   @media (max-width: 520px) {
     /* on phones the goal panel takes the status line's place while you sit */
     .goals:not([hidden]) ~ .status { display: none; }
-    .actions { width: 100%; }
-    .actions button { flex: 1; min-width: 0; padding: 11px 4px; font-size: 12px; white-space: nowrap; }
+    /* six buttons: two rows of three on phones */
+    .actions { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .actions button { min-width: 0; padding: 10px 4px; font-size: 12px; white-space: nowrap; }
   }
 </style>
 
@@ -409,8 +419,71 @@
     <button id="btnFriends" type="button">친구 부르기</button>
     <button id="btnDiary" type="button">나의 기록</button>
     <button id="btnOverview" type="button">전체 보기</button>
+    <button id="btnGuide" type="button">설명서</button>
   </div>
 </footer>
+
+<!-- 설명서: how to use the room -->
+<div class="diary" id="guide" role="dialog" aria-modal="true" aria-labelledby="guideTitle" hidden>
+  <div class="diary-card guide-card">
+    <div class="diary-head">
+      <div>
+        <div class="eyebrow">사이버지식정보방</div>
+        <h2 id="guideTitle">설명서</h2>
+      </div>
+      <button id="guideClose" type="button">닫기</button>
+    </div>
+    <p class="guide-lead">밤마다 함께 공부하는 사지방이에요. 대화는 없지만, 같은 시간에 앉아 있는 전우들이 보여요.</p>
+    <details open>
+      <summary>1. 운영 시간</summary>
+      <table class="guide-time">
+        <tr><th>21:00</th><td>불이 켜져요</td></tr>
+        <tr><th>21:30</th><td>자리에 앉아 오늘의 목표를 적어요</td></tr>
+        <tr><th>22:00–24:00</th><td>연등 시간. 30분마다 한마디가 바뀌어요</td></tr>
+        <tr><th>23:50</th><td>내일 할 일을 적으며 마무리해요</td></tr>
+        <tr><th>24:00</th><td>불이 꺼져요. 모니터는 켜져 있어 조금 더 머물 수 있어요</td></tr>
+      </table>
+    </details>
+    <details>
+      <summary>2. 들어오기</summary>
+      <ul>
+        <li>들어온 순서대로 <b>용사1, 용사2…</b> 이름이 붙어요.</li>
+        <li>아래 이름 버튼(✎)을 누르면 <b>닉네임</b>(최대 8자)으로 바꿀 수 있어요.</li>
+        <li>사지방 하나에 <b>24명</b>까지 들어가요. 꽉 차면 옆 사지방으로 안내돼요.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>3. 걷기와 앉기</summary>
+      <ul>
+        <li><b>방향키·WASD</b>로 걷거나, <b>바닥을 눌러</b> 그곳으로 걸어가요.</li>
+        <li><b>빈 PC석을 누르면</b> 걸어가서 앉아요. 번호판에 주황 점이 있는 자리는 사용 중이에요.</li>
+        <li><b>앉기</b> 버튼을 누르면 빈자리에 바로 앉고, 한 번 더 누르면 <b>일어서요</b>.</li>
+        <li>화면을 드래그하면 둘러볼 수 있고, <b>전체 보기</b>를 누르면 방 전체가 보여요.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>4. 앉아서 할 일</summary>
+      <ul>
+        <li><b>오늘의 목표 2가지</b>를 적고 <b>완료</b>를 누르면 내 모니터에 떠요. 나만 보여요. 바꾸려면 <b>수정</b>을 눌러요.</li>
+        <li><b>지금 하는 일</b>을 적으면 내 머리 위에 떠서 모두에게 보여요. (예: 토익 단어 암기)</li>
+      </ul>
+    </details>
+    <details>
+      <summary>5. 함께하기</summary>
+      <ul>
+        <li>대화 기능은 없어요. 대신 <b>경례</b> 버튼으로 인사해요.</li>
+        <li><b>친구 부르기</b>를 누르면 친구 전용 사지방 주소가 복사돼요. 그 주소로 들어온 사람끼리만 앉아요(최대 12명).</li>
+      </ul>
+    </details>
+    <details>
+      <summary>6. 꼭 알아 두세요</summary>
+      <ul>
+        <li>목표, 닉네임, 나의 기록은 <b>지금 쓰는 기기의 브라우저에만</b> 저장돼요. 다른 기기나 브라우저로 들어오면 보이지 않고, 브라우저 기록을 지우면 사라져요.</li>
+        <li>다른 사람에게는 이름과 지금 하는 일 정도만 보여요.</li>
+      </ul>
+    </details>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -2704,7 +2777,7 @@
   const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
   window.addEventListener('keydown', e => {
     const k = KEYMAP[e.code];
-    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden) return;
+    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden || !$('guide').hidden) return;
     e.preventDefault();
     if (me.seat) return;   // seated: keys do nothing until 일어서기
     keys.add(k);
@@ -2985,6 +3058,15 @@
   const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), floorHit = new THREE.Vector3();
 
   $('btnOverview').addEventListener('click', goOverview);
+  // 설명서
+  {
+    const g = $('guide');
+    const close = () => { g.hidden = true; $('btnGuide').focus(); };
+    $('btnGuide').addEventListener('click', () => { g.hidden = false; keys.clear(); $('guideClose').focus(); });
+    $('guideClose').addEventListener('click', close);
+    g.addEventListener('click', e => { if (e.target === g) close(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !g.hidden) close(); });
+  }
   $('btnSalute').addEventListener('click', salute);
   $('btnSit').addEventListener('click', () => {
     if (me.seat) { standUp(); return; }
