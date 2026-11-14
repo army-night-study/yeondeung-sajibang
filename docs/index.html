@@ -493,6 +493,7 @@
       <ul>
         <li><b>오늘의 목표 2가지</b>를 적고 <b>완료</b>를 누르면 내 모니터에 떠요. 나만 보여요. 바꾸려면 <b>수정</b>을 눌러요.</li>
         <li><b>지금 하는 일</b>을 적으면 내 머리 위에 떠서 모두에게 보여요. (예: 토익 단어 암기)</li>
+        <li>모니터 위쪽 <b>집중 타이머</b>가 22:00부터 2시간을 세요. 자정까지 몇 분 남았는지, 몇 분 더 집중하면 되는지 보여 줘요.</li>
       </ul>
     </details>
     <details>
@@ -2053,9 +2054,10 @@
     ctx.fillStyle = '#0f1a12'; ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 40);
     center(ctx, goalsLocked ? '목표 확정 · 연등 학습 중' : '로그인 완료 · 목표 작성 중', `24px ${BODY}`, '#1e1c0e', w / 2, 22);
-    center(ctx, '오늘의 목표', `40px ${DISPLAY}`, '#e8ebdc', w / 2, 92);
+    // the top 90 px are covered by the focus timer strip (see "focus timer on every monitor")
+    center(ctx, '오늘의 목표', `36px ${DISPLAY}`, '#e8ebdc', w / 2, 118);
     goals.forEach((g, i) => {
-      const y = 160 + i * 64, x = 52;
+      const y = 170 + i * 56, x = 52;
       ctx.strokeStyle = '#c3cab2'; ctx.lineWidth = 3; ctx.strokeRect(x, y - 16, 32, 32);
       if (g.done) {
         ctx.strokeStyle = '#d6c47e'; ctx.lineWidth = 5;
@@ -3181,6 +3183,68 @@
     if (now - boardAt < (boardDirty ? 800 : 3000)) return;
     boardAt = now; boardDirty = false; drawBoard();
   }
+  // ---------- focus timer on every monitor ----------
+  // A two-hour timer from 22:00 to 24:00 runs along the top of each screen (over my goals screen's header bar). It is the same clock
+  // for everyone, so one shared canvas is drawn once a second and every seat's strip shows it.
+  const FOCUS_START = 22 * 3600, FOCUS_END = 24 * 3600, FOCUS_LEN = FOCUS_END - FOCUS_START;
+  const FOCUS_H = 90;   // canvas px on a 512 px wide strip (the screen is 512 x 300 on my own monitor)
+  const focusTimer = canvasTex(512, FOCUS_H, () => {});
+  const focusMat = new THREE.MeshBasicMaterial({ map: focusTimer.tex });
+  const focusGeo = new THREE.PlaneGeometry(0.51, 0.51 * FOCUS_H / 512);
+  seats.forEach(seat => {
+    const m = new THREE.Mesh(focusGeo, focusMat);
+    m.position.set(0, 1.0 + 0.15 - 0.51 * FOCUS_H / 512 / 2, -0.1855);   // top edge: the goals panel covers the bottom when seated
+    seat.group.add(m);
+  });
+  const hms = s => `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+  let focusKey = '';
+  function drawFocus() {
+    const d = new Date();
+    const sec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    let phase, big, line1, line2, frac;
+    if (sec >= FOCUS_START) {                 // 22:00–23:59: counting down to midnight
+      const left = FOCUS_END - sec, done = sec - FOCUS_START;
+      const leftMin = Math.ceil(left / 60);
+      phase = 'run'; big = hms(left); frac = done / FOCUS_LEN;
+      line1 = `집중 타이머 · 자정까지 ${leftMin}분`;
+      line2 = `${Math.floor(done / 60)}분 집중 · ${leftMin}분 더 집중`;
+    } else if (sec < 6 * 3600) {              // after midnight: today's two hours are over
+      phase = 'end'; big = '0:00:00'; frac = 1;
+      line1 = '집중 타이머 끝';
+      line2 = '오늘 120분 연등 완료 · 수고했어요';
+    } else {                                  // before 22:00: waiting to start
+      const until = FOCUS_START - sec;
+      phase = 'wait'; big = hms(FOCUS_LEN); frac = 0;
+      const h = Math.floor(until / 3600), m = Math.ceil((until % 3600) / 60);
+      line1 = '집중 타이머 · 22:00 시작';
+      line2 = `시작까지 ${h ? h + '시간 ' : ''}${m}분`;
+    }
+    const key = big + line1 + line2;
+    if (key === focusKey) return;
+    focusKey = key;
+    const ctx = focusTimer.ctx, w = 512, h = FOCUS_H;
+    ctx.fillStyle = '#0a120d'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 3);
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+    ctx.fillStyle = phase === 'run' ? (FOCUS_END - sec <= 600 ? '#ff8a6a' : '#f4f6ea') : '#7f8975';
+    ctx.font = `bold 44px ${DISPLAY}`; ctx.fillText(big, w - 14, 40);
+    const room = w - 14 - ctx.measureText(big).width - 16 - 14;   // what's left for the two lines on the left
+    const fit = (text, px, weight) => {
+      do ctx.font = `${weight}${px}px ${BODY}`; while (ctx.measureText(text).width > room && --px > 12);
+    };
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#d6c47e'; fit(line1, 21, 'bold '); ctx.fillText(line1, 14, 23);
+    ctx.fillStyle = phase === 'run' ? '#e8ebdc' : '#9aa38e'; fit(line2, 24, ''); ctx.fillText(line2, 14, 56);
+    ctx.fillStyle = '#26352a'; ctx.fillRect(14, 78, w - 28, 6);
+    ctx.fillStyle = phase === 'end' ? '#7f8975' : '#d6c47e'; ctx.fillRect(14, 78, (w - 28) * frac, 6);
+    focusTimer.tex.needsUpdate = true;
+  }
+  let focusAt = 0;
+  fontsReady.then(() => { focusKey = ''; });   // redraw once the web fonts arrive
+  function stepFocus(now) {
+    if (now - focusAt < 250) return;
+    focusAt = now; drawFocus();
+  }
   // ---------- the base outside ----------
   // The 사지방 is one room at the east end of a barracks block. Its two walls that face the overview
   // camera (front, east) are cut at waist height on the outside, like a model with the walls sliced
@@ -3541,7 +3605,7 @@
 
     const t = now * 0.001, motion = reduceMotion ? 0 : 1;
     const dt = Math.min(0.05, Math.max(0, (now - (loop.prev || now)) / 1000)); loop.prev = now;
-    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol(); stepBoard(now);
+    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol(); stepBoard(now); stepFocus(now);
     soldiers.forEach(s => {
       const p = t + s.phase;
       // pop in on arrival
