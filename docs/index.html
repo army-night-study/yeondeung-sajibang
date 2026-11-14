@@ -267,6 +267,11 @@
   .goal-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
 
   .tag.me { background: var(--paper); color: var(--khaki-ink); }
+  /* 행보관: dark tag, and his line in a speech bubble */
+  .tag.sgt { background: #23271c; color: #f1e4be; border: 1px solid #6f7556; }
+  .tag.sgt::after { border-top-color: #23271c; }
+  .tag.sgt .say { display: block; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(241, 228, 190, 0.3); font-size: 15px; font-weight: 700; }
+  .tag.sgt .say:empty { display: none; }
   .tag.me::after { border-top-color: var(--paper); }
   button:disabled { opacity: 0.5; cursor: default; }
 
@@ -1019,6 +1024,165 @@
     glasses: new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.4 }),
     leaf: new THREE.MeshStandardMaterial({ color: 0xf6f2e6, roughness: 0.9, side: THREE.DoubleSide }),
   };
+  // 행보관 (event NPC): ROK digital camo combat uniform instead of 생활복
+  const SGT = (() => {
+    const camoTex = canvasTex(64, 64, (ctx, w, h) => {
+      // pixel blotches in layers: olive base, green, brown, tan, dark
+      // the 2011 digital pattern: grey-green base with olive, brown, pale grey and black pixels
+      ctx.fillStyle = '#7c8070'; ctx.fillRect(0, 0, w, h);
+      [['#8f918a', 14], ['#4d5b40', 24], ['#6c5f4f', 18], ['#aeac9a', 14], ['#5d7047', 16], ['#2b2b27', 12]].forEach(([c, n]) => {
+        ctx.fillStyle = c;
+        for (let i = 0; i < n; i++) {
+          let x = Math.floor(rand() * 16) * 4, y = Math.floor(rand() * 16) * 4;
+          for (let j = 0; j < 4 + Math.floor(rand() * 5); j++) {
+            ctx.fillRect(x % w, y % h, 4, 4);
+            x += (Math.floor(rand() * 3) - 1) * 4; y += (Math.floor(rand() * 3) - 1) * 4;
+          }
+        }
+      });
+    }).tex;
+    camoTex.wrapS = camoTex.wrapT = THREE.RepeatWrapping; camoTex.repeat.set(3.5, 3.5);
+    camoTex.magFilter = THREE.NearestFilter;
+    // 상사 rank as worn on the combat uniform: an embroidered olive patch on each collar point with
+    // three downward chevrons over a pair of leaves (subdued black thread)
+    // (on today's digital combat uniform it is one square 수풀색 patch, velcroed to the middle of the chest)
+    const rankTex = canvasTex(64, 64, (ctx, w, h) => {
+      ctx.fillStyle = '#4a5537'; ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#2b3220'; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
+      ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 5; ctx.lineJoin = 'miter';
+      [12, 22, 32].forEach(y => { ctx.beginPath(); ctx.moveTo(15, y); ctx.lineTo(32, y + 10); ctx.lineTo(49, y); ctx.stroke(); });
+      ctx.fillStyle = '#0d0d0d';
+      [-1, 1].forEach(k => {
+        ctx.save(); ctx.translate(32 + k * 8, 51); ctx.rotate(k * 0.65);
+        ctx.beginPath(); ctx.ellipse(0, 0, 4.5, 8.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      });
+      ctx.fillRect(30, 47, 4, 10);
+    }).tex;
+    // ROKA tape over the left breast pocket
+    const rokaTex = canvasTex(128, 32, (ctx, w, h) => {
+      ctx.fillStyle = '#56603f'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#111'; ctx.font = '800 22px Arial, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ROKA', w / 2, h / 2 + 1);
+    }).tex;
+    // name tape: olive with black lettering, on the right breast
+    const tapeTex = canvasTex(128, 32, (ctx, w, h) => {
+      ctx.fillStyle = '#56603f'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#111'; ctx.font = '700 22px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('김 철 수', w / 2, h / 2 + 1);
+    }).tex;
+    // short-cropped hair: near-black with fine flecks so it reads as hair, not a smooth cap
+    const hairTex = canvasTex(64, 64, (ctx, w, h) => {
+      ctx.fillStyle = '#17120e'; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 420; i++) {
+        ctx.fillStyle = rand() < 0.5 ? '#2a221b' : '#0c0907';
+        ctx.fillRect(Math.floor(rand() * w), Math.floor(rand() * h), 1, 2);
+      }
+    }).tex;
+    hairTex.wrapS = hairTex.wrapT = THREE.RepeatWrapping; hairTex.repeat.set(4, 2);
+    // national flag (태극기) for the right sleeve
+    // Drawn to the official proportions (대한민국국기법 시행령), with H = flag height:
+    //  - flag 3:2; 태극 diameter H/2, centred; its S-line lies on the diagonal from the
+    //    upper-left to the lower-right corner, red (양) above, blue (음) below, the red
+    //    head toward the upper-left and the blue head toward the lower-right
+    //  - each 괘 sits on a diagonal, H/8 out from the 태극's edge, bars at right angles to
+    //    the diagonal: bar length H/4, bar width H/24, gap between bars H/48, break H/48
+    //  - 건 ☰ (3 whole) upper-left, 곤 ☷ (3 broken) lower-right,
+    //    감 ☵ (broken·whole·broken) upper-right, 리 ☲ (whole·broken·whole) lower-left
+    const flagTex = canvasTex(192, 128, (ctx, w, h) => {
+      const H = h, cx = w / 2, cy = h / 2, R = H / 4;
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+      const diag = Math.atan2(2, 3);   // angle of the upper-left → lower-right diagonal (canvas y down)
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(diag);
+      // in this frame +x points to the lower-right corner, -y is the upper side of the flag
+      ctx.fillStyle = '#003478'; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#cd2e3a'; ctx.beginPath(); ctx.arc(0, 0, R, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-R / 2, 0, R / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#003478'; ctx.beginPath(); ctx.arc(R / 2, 0, R / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      const L = H / 4, bw = H / 24, gap = H / 48, brk = H / 48;
+      const dist = R + H / 8 + (3 * bw + 2 * gap) / 2;   // 태극 edge → H/8 → middle of the 괘
+      // bars listed from the 태극 outward; true = whole, false = broken
+      const GWAE = [
+        { dx: -3, dy: -2, bars: [true, true, true] },      // 건 upper-left
+        { dx: 3, dy: 2, bars: [false, false, false] },     // 곤 lower-right
+        { dx: 3, dy: -2, bars: [false, true, false] },     // 감 upper-right
+        { dx: -3, dy: 2, bars: [true, false, true] },      // 리 lower-left
+      ];
+      ctx.fillStyle = '#000000';
+      GWAE.forEach(g => {
+        const len = Math.hypot(g.dx, g.dy), ux = g.dx / len, uy = g.dy / len;
+        ctx.save(); ctx.translate(cx + ux * dist, cy + uy * dist);
+        ctx.rotate(Math.atan2(uy, ux) + Math.PI / 2);   // local x runs along the bars, local -y outward
+        g.bars.forEach((whole, i) => {
+          const y = (1 - i) * (bw + gap) - bw / 2;      // i = 0 nearest the 태극
+          if (whole) ctx.fillRect(-L / 2, y, L, bw);
+          else { ctx.fillRect(-L / 2, y, (L - brk) / 2, bw); ctx.fillRect(brk / 2, y, (L - brk) / 2, bw); }
+        });
+        ctx.restore();
+      });
+      ctx.strokeStyle = '#8a8a80'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, w - 2, h - 2);
+    }).tex;
+    // 상사 beret flash: dark green patch with a black edge and the rank in gold
+    // (three down-pointing chevrons over leaves), as worn on the black beret
+    const flashTex = canvasTex(64, 76, (ctx, w, h) => {
+      const r = 8;
+      ctx.fillStyle = '#0c0c0c';
+      ctx.beginPath(); ctx.moveTo(r, 0); ctx.arcTo(w, 0, w, h, r); ctx.arcTo(w, h, 0, h, r); ctx.arcTo(0, h, 0, 0, r); ctx.arcTo(0, 0, w, 0, r); ctx.fill();
+      ctx.fillStyle = '#2c6a5d'; ctx.fillRect(5, 5, w - 10, h - 10);
+      ctx.strokeStyle = '#e0bb4f'; ctx.lineWidth = 6; ctx.lineJoin = 'miter';
+      [14, 26, 38].forEach(y => { ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(32, y + 11); ctx.lineTo(50, y); ctx.stroke(); });
+      ctx.fillStyle = '#e0bb4f';
+      [-1, 1].forEach(k => { ctx.save(); ctx.translate(32 + k * 9, 61); ctx.rotate(k * 0.65); ctx.beginPath(); ctx.ellipse(0, 0, 5, 9, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore(); });
+      ctx.fillRect(30, 56, 4, 11);
+    }).tex;
+    // unit patch: a shield in dark green with a black emblem, on the left shoulder
+    const unitTex = canvasTex(64, 64, (ctx) => {
+      const shield = (inset) => {
+        ctx.beginPath(); ctx.moveTo(6 + inset, 6 + inset); ctx.lineTo(58 - inset, 6 + inset); ctx.lineTo(58 - inset, 34);
+        ctx.quadraticCurveTo(58 - inset, 52 - inset * 0.5, 32, 61 - inset); ctx.quadraticCurveTo(6 + inset, 52 - inset * 0.5, 6 + inset, 34); ctx.closePath();
+      };
+      ctx.fillStyle = '#1e2a1d'; shield(0); ctx.fill();
+      ctx.fillStyle = '#4f6a46'; shield(4); ctx.fill();
+      ctx.fillStyle = '#121812';
+      ctx.beginPath(); ctx.moveTo(22, 18); ctx.lineTo(44, 18); ctx.lineTo(33, 30); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(22, 32); ctx.lineTo(44, 32); ctx.lineTo(33, 46); ctx.closePath(); ctx.fill();
+    }).tex;
+    // 병과장 (branch insignia) over the name tape: small 수풀색 square with a black emblem
+    const branchTex = canvasTex(32, 32, (ctx, w, h) => {
+      ctx.fillStyle = '#3f4a33'; ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#2a3122'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, w - 2, h - 2);
+      ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(8, 8); ctx.lineTo(24, 24); ctx.moveTo(24, 8); ctx.lineTo(8, 24); ctx.stroke();
+      ctx.beginPath(); ctx.arc(16, 16, 5, 0, Math.PI * 2); ctx.fillStyle = '#0d0d0d'; ctx.fill();
+    }).tex;
+    return {
+      camo: new THREE.MeshStandardMaterial({ map: camoTex, roughness: 0.9 }),
+      camoDark: new THREE.MeshStandardMaterial({ map: camoTex, color: 0x9a9a9a, roughness: 0.9 }),
+      camoSide: new THREE.MeshStandardMaterial({ map: camoTex, roughness: 0.9, side: THREE.DoubleSide }),
+      // collar cloth: a shade darker, as a folded double layer catches less light
+      collar: new THREE.MeshStandardMaterial({ map: camoTex, color: 0xb4b4b4, roughness: 0.9, side: THREE.DoubleSide }),
+      seam: new THREE.MeshStandardMaterial({ color: 0x2c3022, roughness: 0.9, side: THREE.DoubleSide }),
+      tape: new THREE.MeshStandardMaterial({ map: tapeTex, roughness: 0.8, side: THREE.DoubleSide }),
+      rank: new THREE.MeshStandardMaterial({ map: rankTex, roughness: 0.8, side: THREE.DoubleSide }),
+      roka: new THREE.MeshStandardMaterial({ map: rokaTex, roughness: 0.8, side: THREE.DoubleSide }),
+      branch: new THREE.MeshStandardMaterial({ map: branchTex, roughness: 0.8, side: THREE.DoubleSide }),
+      flag: new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.8, side: THREE.DoubleSide }),
+      stubble: new THREE.MeshStandardMaterial({ color: 0x8d7563, roughness: 1, transparent: true, opacity: 0.45, depthWrite: false }),
+      unit: new THREE.MeshStandardMaterial({ map: unitTex, roughness: 0.8, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }),
+      skin: new THREE.MeshStandardMaterial({ color: 0xdcab82, roughness: 0.7 }),
+      buzz: new THREE.MeshStandardMaterial({ color: 0x221d19, roughness: 1 }),
+      hair: new THREE.MeshStandardMaterial({ map: hairTex, roughness: 0.95 }),
+      brow: new THREE.MeshStandardMaterial({ color: 0x120d09, roughness: 0.9 }),
+      mouth: new THREE.MeshStandardMaterial({ color: 0x8f2f2b, roughness: 0.6, side: THREE.DoubleSide }),
+      teeth: new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 0.5 }),
+      boot: new THREE.MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.32, metalness: 0.15 }),
+      beret: new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 1 }),
+      beretBand: new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.35 }),
+      beretFlash: new THREE.MeshStandardMaterial({ map: flashTex, roughness: 0.6, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }),
+      sole: new THREE.MeshStandardMaterial({ color: 0x070707, roughness: 0.95 }),
+      lace: new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.7 }),
+    };
+  })();
   const soldiers = [];
   const sph = (r, mat, ws = 16, hs = 12) => new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), mat);
   // a limb segment from a to b: radius r at a, tapering to rb at b (real limbs narrow toward wrist and ankle),
@@ -1040,27 +1204,35 @@
   }
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   // one arm: upper arm shoulder->elbow, forearm in its own group (pivot at the elbow) ending in a hand
-  function arm(parent, k, shoulder, elbow, handOff, skin) {
+  function arm(parent, k, shoulder, elbow, handOff, skin, sgt = false) {
     const g = new THREE.Group(); parent.add(g);
     const side = V(k * 0.9, 0.44, 0).normalize();
+    const cloth = sgt ? SGT.camo : SM.shirt;
     // upper arm: full at the shoulder, slimmer at the elbow; forearm narrows again to the wrist
-    limb(g, shoulder, elbow, 0.046, SM.shirt, true, 0.037);
-    stripe(g, shoulder, elbow, side, 0.042);
+    limb(g, shoulder, elbow, 0.046, cloth, true, 0.037);
+    if (!sgt) stripe(g, shoulder, elbow, side, 0.042);
+    else {
+      // unit patch on the left sleeve, 태극기 on the right, just below the shoulder, facing out
+      const p = k < 0 ? new THREE.Mesh(new THREE.PlaneGeometry(0.046, 0.046), SGT.unit) : new THREE.Mesh(new THREE.PlaneGeometry(0.048, 0.032), SGT.flag);
+      p.position.copy(shoulder).lerp(elbow, 0.3).add(V(k * 0.045, 0, 0)); p.rotation.y = k * Math.PI / 2; g.add(p);
+    }
     const fore = new THREE.Group(); fore.position.copy(elbow); g.add(fore);
     const cuffAt = handOff.clone().multiplyScalar(0.88);
-    limb(fore, V(0, 0, 0), handOff, 0.037, SM.shirt, true, 0.031);
-    stripe(fore, V(0, 0, 0), cuffAt, side, 0.034);
-    limb(fore, cuffAt, handOff, 0.034, SM.cuff, false, 0.033);
+    limb(fore, V(0, 0, 0), handOff, 0.037, cloth, true, 0.031);
+    if (!sgt) stripe(fore, V(0, 0, 0), cuffAt, side, 0.034);
+    limb(fore, cuffAt, handOff, 0.034, sgt ? SGT.camoDark : SM.cuff, false, 0.033);
     // a mitten-shaped hand rather than a ball
     const hand = sph(0.036, skin, 14, 12); hand.scale.set(0.85, 1.15, 0.9);
     hand.position.copy(handOff).multiplyScalar(1.14); hand.quaternion.setFromUnitVectors(V(0, -1, 0), handOff.clone().normalize()); fore.add(hand);
     return { g, fore };
   }
 
-  function makeSoldier(parent, standing) {
+  // sgt: the 행보관 event NPC (combat uniform, older face) instead of a 생활복 용사
+  function makeSoldier(parent, standing, sgt = false) {
     // local space: the soldier faces -z; seated, the desk is toward -z and the seat top is at y 0.49
     const s = new THREE.Group(); parent.add(s);
-    const skin = SM.skins[Math.floor(rand() * SM.skins.length)];
+    const skin = sgt ? SGT.skin : SM.skins[Math.floor(rand() * SM.skins.length)];
+    const shirtM = sgt ? SGT.camo : SM.shirt, pantsM = sgt ? SGT.camo : SM.pants;
 
     // legs: thighs start wide at the hip and taper to the knee, calves taper to the ankle;
     // standing, the knees sit a touch inside the hips like a real stance
@@ -1068,32 +1240,121 @@
       const hip = V(k * 0.072, 0.53, 0.06);
       const knee = standing ? V(k * 0.066, 0.3, 0.05) : V(k * 0.07, 0.53, -0.2);
       const ankle = standing ? V(k * 0.07, 0.09, 0.05) : V(k * 0.07, 0.1, -0.22);
-      limb(s, hip, knee, 0.064, SM.pants, true, 0.05);
-      limb(s, knee, ankle, 0.05, SM.pants, true, 0.04);
-      stripe(s, hip, knee, V(k, 0, 0), 0.057);
-      stripe(s, knee, ankle, V(k, 0, 0), 0.045);
-      // rounded sneaker, toe forward (-z)
-      const shoe = sph(0.05, SM.shoe, 16, 10); shoe.scale.set(0.9, 0.6, 1.45);
-      shoe.position.set(k * 0.07, 0.033, standing ? -0.01 : -0.26); s.add(shoe);
+      limb(s, hip, knee, 0.064, pantsM, true, 0.05);
+      limb(s, knee, ankle, 0.05, pantsM, true, 0.04);
+      if (!sgt) {
+        stripe(s, hip, knee, V(k, 0, 0), 0.057);
+        stripe(s, knee, ankle, V(k, 0, 0), 0.045);
+        // rounded sneaker, toe forward (-z)
+        const shoe = sph(0.05, SM.shoe, 16, 10); shoe.scale.set(0.9, 0.6, 1.45);
+        shoe.position.set(k * 0.07, 0.033, standing ? -0.01 : -0.26); s.add(shoe);
+      } else {
+        // 육군 black combat boots: polished leather shaft laced up the front to mid-calf (trousers
+        // bloused inside), a padded top rim, a rounded toe and a thick black lugged sole
+        const bx = ankle.x, bz = ankle.z, toeZ = standing ? -0.015 : -0.265;
+        limb(s, V(bx, 0.035, bz), V(bx, 0.2, bz), 0.051, SGT.boot, false, 0.048);
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.048, 0.007, 8, 20), SGT.boot); rim.rotation.x = Math.PI / 2; rim.position.set(bx, 0.2, bz); s.add(rim);
+        const foot = sph(0.053, SGT.boot, 18, 12); foot.scale.set(0.98, 0.62, 1.62); foot.position.set(k * 0.07, 0.042, toeZ); s.add(foot);
+        // rounded rubber sole under the toe and a heel block under the shaft
+        const sole = sph(0.057, SGT.sole, 18, 8); sole.scale.set(1.0, 0.24, 1.7); sole.position.set(k * 0.07, 0.013, toeZ + 0.006); s.add(sole);
+        const heelB = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.054, 0.026, 18), SGT.sole); heelB.position.set(bx, 0.013, bz); s.add(heelB);
+        // lace rungs and the tongue down the front of the shaft
+        const tongue = box(0.03, 0.15, 0.006, SGT.lace); tongue.position.set(bx, 0.12, bz - 0.049); s.add(tongue);
+        for (let j = 0; j < 5; j++) { const lace = box(0.04, 0.004, 0.004, SGT.lace); lace.position.set(bx, 0.07 + j * 0.03, bz - 0.053); lace.rotation.z = (j % 2 ? 1 : -1) * 0.25; s.add(lace); }
+      }
     });
     // pelvis: wider than the waist, so the legs grow out of a rounded seat instead of a flat cut
-    const pelvis = sph(0.12, SM.pants, 20, 14); pelvis.scale.set(1.12, 0.62, 0.88); pelvis.position.set(0, 0.53, 0.055); s.add(pelvis);
-    const belly = sph(0.125, SM.shirt, 20, 14); belly.scale.set(1, 0.75, 0.9); belly.position.set(0, 0.58, 0.05); s.add(belly);
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.125, 0.2, 18), SM.shirt); torso.position.set(0, 0.68, 0.05); s.add(torso);
+    const pelvis = sph(0.12, pantsM, 20, 14); pelvis.scale.set(1.12, 0.62, 0.88); pelvis.position.set(0, 0.53, 0.055); s.add(pelvis);
+    const belly = sph(0.125, shirtM, 20, 14); belly.scale.set(1, 0.75, 0.9); belly.position.set(0, 0.58, 0.05); s.add(belly);
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.125, 0.2, 18), shirtM); torso.position.set(0, 0.68, 0.05); s.add(torso);
     // shoulders slope down from the neck to the arms (trapezius), and a round deltoid caps each arm
-    const chest = sph(0.1, SM.shirt, 20, 14); chest.scale.set(1.12, 0.7, 0.95); chest.position.set(0, 0.765, 0.05); s.add(chest);
+    const chest = sph(0.1, shirtM, 20, 14); chest.scale.set(1.12, 0.7, 0.95); chest.position.set(0, 0.765, 0.05); s.add(chest);
     [-1, 1].forEach(k => {
-      limb(s, V(k * 0.035, 0.81, 0.05), V(k * 0.118, 0.762, 0.05), 0.05, SM.shirt, false, 0.046);
-      const delt = sph(0.05, SM.shirt, 16, 12); delt.scale.set(0.95, 1, 0.95); delt.position.set(k * 0.122, 0.752, 0.05); s.add(delt);
+      limb(s, V(k * 0.035, 0.81, 0.05), V(k * 0.118, 0.762, 0.05), 0.05, shirtM, false, 0.046);
+      const delt = sph(0.05, shirtM, 16, 12); delt.scale.set(0.95, 1, 0.95); delt.position.set(k * 0.122, 0.752, 0.05); s.add(delt);
     });
-    // stand collar, open a little at the front
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.072, 0.06, 20, 1, true, 0.35, Math.PI * 2 - 0.7), SM.collar);
-    collar.rotation.y = Math.PI; collar.position.set(0, 0.815, 0.04); s.add(collar);
-    // zip with green piping either side, from collar to hem (front of the jacket faces -z)
     const front = (y, x = 0) => {
       const r = y > 0.62 ? 0.1 + (0.125 - 0.1) * (0.78 - y) / 0.2 : 0.125 * 0.9;
       return V(x, y, 0.05 - Math.sqrt(Math.max(0, r * r - x * x)) - 0.004);
     };
+    if (sgt) {
+      // black T-shirt at the neck, under a camo shirt collar whose points carry the rank insignia
+      const tee = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.066, 0.05, 20), SM.black); tee.position.set(0, 0.818, 0.045); s.add(tee);
+      // the body's front surface (torso cylinder below 0.78, rounded chest above), so cloth can lie on it
+      const skinZ = (y, x) => {
+        const a = (x / 0.112) ** 2 + ((y - 0.765) / 0.07) ** 2;
+        const chest = a < 1 ? 0.05 - 0.095 * Math.sqrt(1 - a) : 0.05;
+        const r = 0.1 + 0.025 * (0.78 - y) / 0.2;
+        const cyl = y <= 0.78 && y >= 0.58 && Math.abs(x) < r ? 0.05 - Math.sqrt(r * r - x * x) : 0.05;
+        return Math.min(chest, cyl);
+      };
+      // a curved patch of cloth laid on the body: fn(u, v) gives [x, y], the surface gives z
+      const patch = (fn, lift, mat, nu, nv, uvScale) => {
+        const pos = [], uv = [], idx = [];
+        for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+          const u = i / nu, v = j / nv, [x, y] = fn(u, v);
+          pos.push(x, y, skinZ(y, x) - lift); uv.push(u * uvScale, v * uvScale);
+        }
+        for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+          const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1; idx.push(a, b, c, b, d, c);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        g.setIndex(idx); g.computeVertexNormals();
+        return new THREE.Mesh(g, mat);
+      };
+      // shirt collar: the folded-down fall wraps the back and sides of the neck and lies on the shoulders,
+      // open at the front where the two collar points lie flat on the chest
+      const fall = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.11, 0.034, 28, 1, true, Math.PI + 0.18, Math.PI * 2 - 0.36), SGT.collar);
+      fall.position.set(0, 0.8, 0.045); s.add(fall);
+      [-1, 1].forEach(k => {
+        // collar point: top edge along the neckline, narrowing to a point on the chest
+        // polo-shirt collar wing: meets its partner at the centre of the neck, its front edge running
+        // down and out to a point over the upper chest, its back edge rising out over the shoulder
+        const P0 = [k * 0.011, 0.801], P1 = [k * 0.09, 0.797], P2 = [k * 0.062, 0.752];
+        const tri = (A, B, C) => (u, v) => {
+          const tx = A[0] + (B[0] - A[0]) * u, ty = A[1] + (B[1] - A[1]) * u;
+          return [tx + (C[0] - tx) * v, ty + (C[1] - ty) * v];
+        };
+        // a dark seam-line a hair larger underneath, so the collar's outline shows against the shirt
+        const grow = (p, c, f) => [c[0] + (p[0] - c[0]) * f, c[1] + (p[1] - c[1]) * f];
+        const cen = [(P0[0] + P1[0] + P2[0]) / 3, (P0[1] + P1[1] + P2[1]) / 3];
+        s.add(patch(tri(grow(P0, cen, 1.12), grow(P1, cen, 1.12), grow(P2, cen, 1.1)), 0.0015, SGT.seam, 6, 6, 1));
+        s.add(patch(tri(P0, P1, P2), 0.0048, SGT.collar, 6, 6, 0.35));
+        // 상사 rank sewn onto each collar point, in its middle, lined up with the point
+        // (as in the reference photo): "up" runs from the tip back toward the neckline,
+        // and u runs toward the viewer's right (the wearer's -x) so it never reads mirrored
+        const top = [(P0[0] + P1[0]) / 2, (P0[1] + P1[1]) / 2];
+        const ax = top[0] - P2[0], ay = top[1] - P2[1], al = Math.hypot(ax, ay), ux = ax / al, uy = ay / al;
+        const rc = [top[0] + (P2[0] - top[0]) * 0.48, top[1] + (P2[1] - top[1]) * 0.48], rw = 0.019, rh = 0.023;
+        s.add(patch((u, v) => [rc[0] + (u - 0.5) * rw * -uy + (v - 0.5) * rh * ux, rc[1] + (u - 0.5) * rw * ux + (v - 0.5) * rh * uy], 0.0068, SGT.rank, 3, 3, 1));
+        // large breast pocket under a flap whose lower edge slants down toward the side seam
+        const fx0 = 0.022, fw = 0.075, fy = 0.698, fh = 0.024;
+        const flapAt = (u, v) => { const x = k * (fx0 + u * fw); return [x, fy - v * fh - u * 0.008]; };
+        s.add(patch((u, v) => { const [x, y] = flapAt(u, 0); return [x, y + 0.003 - v * (fh + 0.006 + u * 0.004)]; }, 0.0028, SGT.seam, 6, 2, 1));
+        s.add(patch(flapAt, 0.0042, SGT.collar, 6, 2, 0.4));
+        if (k > 0) {
+          // wearer's right breast: name tape above the pocket, branch insignia above the tape's inner end.
+          const tw = 0.06, th = 0.014, tcx = k * (fx0 + tw / 2 + 0.006), tcy = 0.712;
+          s.add(patch((u, v) => [tcx - (u - 0.5) * tw, tcy + (v - 0.5) * th], 0.0045, SGT.tape, 4, 1, 1));
+          const bcx = k * (fx0 + 0.016), bcy = 0.732, bs = 0.016;
+          s.add(patch((u, v) => [bcx - (u - 0.5) * bs, bcy + (v - 0.5) * bs], 0.0045, SGT.branch, 2, 2, 1));
+        }
+        // shoulder strap along the top of each shoulder, from the collar out to the sleeve seam
+        const strap = box(0.08, 0.006, 0.028, SGT.collar);
+        strap.position.set(k * 0.1, 0.83, 0.05); strap.rotation.z = -k * 0.52; s.add(strap);
+      });
+      // front placket from the collar's V down the chest (the jacket closes with a zip under it)
+      s.add(patch((u, v) => [(u - 0.5) * 0.02, 0.79 - v * 0.19], 0.0035, SGT.seam, 1, 8, 1));
+      s.add(patch((u, v) => [(u - 0.5) * 0.016, 0.79 - v * 0.19], 0.005, SGT.collar, 1, 8, 1));
+      limb(s, front(0.6), front(0.55), 0.005, SGT.camoDark, false);
+    }
+    if (!sgt) {
+    // stand collar, open a little at the front
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.072, 0.06, 20, 1, true, 0.35, Math.PI * 2 - 0.7), SM.collar);
+    collar.rotation.y = Math.PI; collar.position.set(0, 0.815, 0.04); s.add(collar);
+    // zip with green piping either side, from collar to hem (front of the jacket faces -z)
     limb(s, front(0.79), front(0.6), 0.0045, SM.zip, false);
     limb(s, front(0.6), front(0.55), 0.0045, SM.zip, false);
     [-1, 1].forEach(k => {
@@ -1106,15 +1367,16 @@
     // oval army patch on the wearer's left chest
     const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.0375), SM.badge);
     badge.position.copy(front(0.71, -0.048)).add(V(0, 0, -0.003)); badge.rotation.set(0.1, Math.PI + 0.35, 0); s.add(badge);
+    }
 
     // seated: elbows rest on the desk edge (desk top y 0.76, its edge 0.12 in front of the chair),
     // forearms lie flat and the hands hold the book open. standing: arms hang at the sides.
     // the wearer's right arm (+x) also has a salute pose, swapped in while saluting
     // standing arms hang a little away from the body, elbows soft, forearms turning in toward the thighs
     const arms = [-1, 1].map(k => standing
-      ? arm(s, k, V(k * 0.124, 0.752, 0.05), V(k * 0.168, 0.625, 0.06), V(-k * 0.012, -0.125, -0.02), skin)
-      : arm(s, k, V(k * 0.124, 0.752, 0.05), V(k * 0.18, 0.81, -0.12), V(-k * 0.035, -0.005, -0.17), skin));
-    const salute = arm(s, 1, V(0.124, 0.752, 0.05), V(0.25, 0.84, -0.02), V(-0.12, 0.13, -0.075), skin);
+      ? arm(s, k, V(k * 0.124, 0.752, 0.05), V(k * 0.168, 0.625, 0.06), V(-k * 0.012, -0.125, -0.02), skin, sgt)
+      : arm(s, k, V(k * 0.124, 0.752, 0.05), V(k * 0.18, 0.81, -0.12), V(-k * 0.035, -0.005, -0.17), skin, sgt));
+    const salute = arm(s, 1, V(0.124, 0.752, 0.05), V(0.25, 0.84, -0.02), V(-0.12, 0.13, -0.075), skin, sgt);
     salute.g.visible = false;
 
     let flip = null;
@@ -1132,6 +1394,52 @@
     // big round head
     const head = new THREE.Group(); head.position.set(0, 0.95, 0.03); s.add(head);
     head.add(sph(0.155, skin, 28, 20));
+    if (sgt) {
+      // 행보관: sides clipped to grey stubble, a short brushed-up top, heavy brows, crinkled eyes,
+      // a nose, and a wide open grin
+      // 스포츠머리: one even layer of short hair, a little longer on top so the crown sits
+      // slightly flat and square; straight hairline across the forehead, down to the ears and nape
+      const hg = new THREE.SphereGeometry(0.161, 36, 22, 0, Math.PI * 2, 0, 1.66);
+      hg.rotateX(0.53);
+      const hp = hg.attributes.position, hv = new THREE.Vector3();
+      for (let i = 0; i < hp.count; i++) {
+        hv.fromBufferAttribute(hp, i);
+        const up = hv.y / 0.161, lift = Math.max(0, up - 0.3) / 0.7;
+        hv.multiplyScalar(1 + 0.07 * lift);                 // thicker toward the top
+        if (hv.y > 0.162) hv.y = 0.162 + (hv.y - 0.162) * 0.45;   // brushed flat-ish crown
+        hp.setXYZ(i, hv.x, hv.y, hv.z);
+      }
+      hg.computeVertexNormals();
+      head.add(new THREE.Mesh(hg, SGT.hair));
+      // black beret: a leather-trimmed band level across the brow, the crown pulled over to the
+      // wearer's right, and the 상사 beret flash on the front-left above the band
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.162, 0.011, 8, 40), SGT.beretBand);
+      band.rotation.x = Math.PI / 2 + 0.08; band.position.set(0, 0.056, 0.006); head.add(band);
+      const crown = sph(0.172, SGT.beret, 32, 18); crown.scale.set(1.06, 0.5, 1.04);
+      crown.position.set(0.036, 0.11, 0.014); crown.rotation.z = -0.3; head.add(crown);
+      // the flash: placed on the crown's surface, facing out
+      const fdir = new THREE.Vector3(-0.3, 0.38, -0.875).normalize();
+      const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.06), SGT.beretFlash);
+      fl.position.copy(fdir).multiplyScalar(0.178).add(V(0, 0.02, 0));
+      fl.lookAt(fl.position.clone().add(fdir)); head.add(fl);
+      [-1, 1].forEach(k => {
+        const ear = sph(0.037, skin, 10, 8); ear.scale.set(0.6, 1, 0.8); ear.position.set(k * 0.155, -0.01, 0.01); head.add(ear);
+        const eye = sph(0.017, SM.eye, 10, 8); eye.scale.set(1.3, 0.5, 0.6); eye.position.set(k * 0.056, -0.01, -0.146); head.add(eye);
+        // thick brows slanting hard down toward the middle
+        const brow = box(0.062, 0.02, 0.014, SGT.brow); brow.position.set(k * 0.054, 0.026, -0.147); brow.rotation.set(-0.2, 0, k * 0.42); head.add(brow);
+        // cheek creases
+        const crease = box(0.004, 0.032, 0.004, SGT.brow); crease.position.set(k * 0.048, -0.058, -0.145); crease.rotation.z = k * 0.4; head.add(crease);
+      });
+      // frown line between the brows
+      const knit = box(0.004, 0.016, 0.004, SGT.brow); knit.position.set(0, 0.022, -0.153); head.add(knit);
+      const nose = sph(0.023, skin, 12, 10); nose.scale.set(1.05, 0.9, 0.85); nose.position.set(0, -0.028, -0.153); head.add(nose);
+      // firm mouth turned down at the corners
+      [-1, 1].forEach(k => {
+        const m = box(0.024, 0.006, 0.006, SGT.brow); m.position.set(k * 0.011, -0.077, -0.148); m.rotation.z = -k * 0.28; head.add(m);
+      });
+      // stubble shadow along the jaw and chin
+      const jaw = sph(0.12, SGT.stubble, 24, 12); jaw.scale.set(1.08, 0.5, 0.6); jaw.position.set(0, -0.078, -0.05); head.add(jaw);
+    } else {
     const hair = new THREE.Mesh(new THREE.SphereGeometry(0.161, 28, 16, 0, Math.PI * 2, 0, 1.3), SM.hair);
     hair.rotation.x = 0.6; head.add(hair);
     [-1, 1].forEach(k => {
@@ -1146,8 +1454,10 @@
       [-1, 1].forEach(k => { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.005, 6, 18), SM.glasses); ring.position.set(k * 0.055, -0.01, -0.152); head.add(ring); });
       const bridge = box(0.04, 0.006, 0.006, SM.glasses); bridge.position.set(0, -0.005, -0.155); head.add(bridge);
     }
+    }
 
-    const sol = { root: s, head, arms, salute, flip, standing, phase: rand() * 100, born: performance.now(), saluteUntil: 0 };
+    // the 행보관 is a size bigger than the 용사들
+    const sol = { root: s, head, arms, salute, flip, standing, phase: rand() * 100, born: performance.now(), saluteUntil: 0, size: sgt ? 1.1 : 1 };
     if (!reduceMotion) s.scale.setScalar(0.001);
     flatten(s);   // ~150 parts become about a dozen draw calls
     soldiers.push(sol);
@@ -2504,6 +2814,95 @@
     camShift.set(me.x, 0.5, me.z).sub(controls.target).multiplyScalar(Math.min(1, dt * 4));
     camera.position.add(camShift); controls.target.add(camShift);
   }
+
+  // ---------- 행보관 순찰 (event NPC) ----------
+  // Three visits a night: 22:10 ("딴 짓 안하나 보러왔다"), one silent visit at a time that changes
+  // every night, and 23:50 ("이제 슬슬 정리해라.."). Each visit walks in at the door, makes one lap
+  // of the room (front aisle, centre aisle, window aisle) and leaves. Where he is comes from the
+  // clock alone, so everyone sees him in the same place without sending anything, and someone who
+  // opens the page mid-visit sees him mid-lap. (?patrol=1|2|3 starts that visit now, for checking.)
+  const PATROL_ROUTE = [[-4.8, 4.4], [-4.0, 3.6], [4.0, 3.6], [4.0, 0], [-4.0, 0], [-4.0, -3.6], [4.3, -3.6], [4.3, 3.9], [-4.8, 4.4]];
+  const PATROL_SPEED = 1.1;
+  // pauses: after reaching route point i, stand for s seconds facing (fx, fz); speak = say the line there
+  const PATROL_PAUSES = { 0: { s: 0.8 }, 1: { s: 3.8, fx: 0, fz: 0, speak: true }, 3: { s: 2.2, fx: -4, fz: 0 }, 6: { s: 1.6, fx: 0, fz: 0 } };
+  const PATROL_STEPS = (() => {
+    const steps = []; let t = 0;
+    PATROL_ROUTE.forEach((p, i) => {
+      const pause = PATROL_PAUSES[i];
+      if (pause) { steps.push({ wait: true, p, t0: t, t1: t + pause.s, face: pause.fx != null ? [pause.fx, pause.fz] : null, speak: !!pause.speak }); t += pause.s; }
+      const q = PATROL_ROUTE[i + 1];
+      if (q) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); steps.push({ wait: false, p, q, t0: t, t1: t + d / PATROL_SPEED }); t += d / PATROL_SPEED; }
+    });
+    return steps;
+  })();
+  const PATROL_DUR = PATROL_STEPS[PATROL_STEPS.length - 1].t1;
+  // the silent visit: a minute between 22:15 and 23:44, picked from the date so it differs every night
+  // but is the same for everyone
+  function patrolRandomMinute(d) {
+    let h = 2166136261;
+    for (const c of `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+    // finish the mix so neighbouring dates land far apart
+    h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+    return 22 * 60 + 15 + ((h >>> 0) % 90);
+  }
+  function patrolVisits(now) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const at = mins => day.getTime() + mins * 60000;
+    return [
+      { id: 1, start: at(22 * 60 + 10), line: '딴 짓 안하나 보러왔다' },
+      { id: 2, start: at(patrolRandomMinute(day)), line: null },
+      { id: 3, start: at(23 * 60 + 50), line: '이제 슬슬 정리해라..' },
+    ];
+  }
+  const patrolTest = (() => { const v = Number(new URLSearchParams(location.search).get('patrol')); return v >= 1 && v <= 3 ? { id: v, start: Date.now() + 1500 } : null; })();
+  let sgt = null, sgtVisit = null, sgtSpoke = null;
+  function patrolNPC() {
+    if (sgt) return sgt;
+    const holder = new THREE.Group(); holder.visible = false; scene.add(holder);
+    const sol = makeSoldier(holder, true, true);
+    const tag = document.createElement('div'); tag.className = 'tag sgt'; tag.hidden = true;
+    const who = document.createElement('span'); who.className = 'who'; who.textContent = '행보관';
+    const line = document.createElement('span'); line.className = 'say';
+    tag.append(who, line); tagLayer.appendChild(tag);
+    sgt = { holder, sol, tag, line };
+    return sgt;
+  }
+  function stepPatrol() {
+    const nowMs = Date.now();
+    let visit = null;
+    const list = patrolTest ? [Object.assign({}, patrolVisits(new Date()).find(v => v.id === patrolTest.id), { start: patrolTest.start })] : patrolVisits(new Date());
+    for (const v of list) if (nowMs >= v.start && nowMs < v.start + PATROL_DUR * 1000) { visit = v; break; }
+    if (!visit) {
+      if (sgt && sgtVisit) { sgt.holder.visible = false; sgt.sol.tag = null; sgt.tag.hidden = true; sgt.sol.walking = false; }
+      sgtVisit = null;
+      return;
+    }
+    const n = patrolNPC();
+    if (sgtVisit !== visit.start) {
+      // a new visit: pop in at the door
+      sgtVisit = visit.start; n.holder.visible = true; n.sol.tag = n.tag; n.sol.born = performance.now();
+      n.line.textContent = '';
+    }
+    const t = (nowMs - visit.start) / 1000;
+    const st = PATROL_STEPS.find(s => t < s.t1) || PATROL_STEPS[PATROL_STEPS.length - 1];
+    let x, z, face;
+    if (st.wait) {
+      [x, z] = st.p;
+      face = st.face ? [st.face[0] - x, st.face[1] - z] : null;
+    } else {
+      const k = Math.min(1, Math.max(0, (t - st.t0) / (st.t1 - st.t0)));
+      x = st.p[0] + (st.q[0] - st.p[0]) * k; z = st.p[1] + (st.q[1] - st.p[1]) * k;
+      face = [st.q[0] - st.p[0], st.q[1] - st.p[1]];
+    }
+    n.holder.position.set(x, 0, z);
+    if (face) n.holder.rotation.y = angleTo(n.holder.rotation.y, Math.atan2(-face[0], -face[1]), 0.15);
+    n.sol.walking = !st.wait;
+    // the line shows over his head while he stands at the first stop, and once in the status bar
+    const speaking = st.wait && st.speak && visit.line;
+    const text = speaking ? visit.line : '';
+    if (n.line.textContent !== text) n.line.textContent = text;
+    if (speaking && sgtSpoke !== visit.start) { sgtSpoke = visit.start; say('행보관', visit.line); }
+  }
   function salute() {
     me.saluteAt = Date.now();
     publishMe(); render();
@@ -2647,12 +3046,12 @@
 
     const t = now * 0.001, motion = reduceMotion ? 0 : 1;
     const dt = Math.min(0.05, Math.max(0, (now - (loop.prev || now)) / 1000)); loop.prev = now;
-    stepWalk(dt); moveAvatars(dt); followCamera(dt);
+    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol();
     soldiers.forEach(s => {
       const p = t + s.phase;
       // pop in on arrival
       const k = motion ? Math.min(1, (now - s.born) / 600) : 1;
-      s.root.scale.setScalar(k < 1 ? 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2) : 1);
+      s.root.scale.setScalar((k < 1 ? 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2) : 1) * (s.size || 1));
       const saluting = s.saluteUntil > now;
       s.salute.g.visible = saluting;
       s.arms[1].g.visible = !saluting;
