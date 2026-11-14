@@ -1020,13 +1020,15 @@
   };
   const soldiers = [];
   const sph = (r, mat, ws = 16, hs = 12) => new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), mat);
-  function limb(parent, a, b, r, mat, cap = true) {
+  // a limb segment from a to b: radius r at a, tapering to rb at b (real limbs narrow toward wrist and ankle),
+  // with a ball at b so the next segment joins without a seam
+  function limb(parent, a, b, r, mat, cap = true, rb = r) {
     const len = a.distanceTo(b);
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rb, r, len, 12), mat);
     m.position.copy(a).add(b).multiplyScalar(0.5);
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
     parent.add(m);
-    if (cap) parent.add(sph(r, mat, 10, 8).translateX(b.x).translateY(b.y).translateZ(b.z));
+    if (cap) parent.add(sph(rb, mat, 12, 10).translateX(b.x).translateY(b.y).translateZ(b.z));
     return m;
   }
   // green stripe edged in black, running along the outer side (+side) of a limb from a to b
@@ -1040,14 +1042,17 @@
   function arm(parent, k, shoulder, elbow, handOff, skin) {
     const g = new THREE.Group(); parent.add(g);
     const side = V(k * 0.9, 0.44, 0).normalize();
-    limb(g, shoulder, elbow, 0.04, SM.shirt);
-    stripe(g, shoulder, elbow, side, 0.04);
+    // upper arm: full at the shoulder, slimmer at the elbow; forearm narrows again to the wrist
+    limb(g, shoulder, elbow, 0.046, SM.shirt, true, 0.037);
+    stripe(g, shoulder, elbow, side, 0.042);
     const fore = new THREE.Group(); fore.position.copy(elbow); g.add(fore);
     const cuffAt = handOff.clone().multiplyScalar(0.88);
-    limb(fore, V(0, 0, 0), handOff, 0.035, SM.shirt);
-    stripe(fore, V(0, 0, 0), cuffAt, side, 0.035);
-    limb(fore, cuffAt, handOff, 0.037, SM.cuff, false);
-    const hand = sph(0.035, skin, 12, 10); hand.position.copy(handOff).multiplyScalar(1.13); fore.add(hand);
+    limb(fore, V(0, 0, 0), handOff, 0.037, SM.shirt, true, 0.031);
+    stripe(fore, V(0, 0, 0), cuffAt, side, 0.034);
+    limb(fore, cuffAt, handOff, 0.034, SM.cuff, false, 0.033);
+    // a mitten-shaped hand rather than a ball
+    const hand = sph(0.036, skin, 14, 12); hand.scale.set(0.85, 1.15, 0.9);
+    hand.position.copy(handOff).multiplyScalar(1.14); hand.quaternion.setFromUnitVectors(V(0, -1, 0), handOff.clone().normalize()); fore.add(hand);
     return { g, fore };
   }
 
@@ -1056,19 +1061,30 @@
     const s = new THREE.Group(); parent.add(s);
     const skin = SM.skins[Math.floor(rand() * SM.skins.length)];
 
+    // legs: thighs start wide at the hip and taper to the knee, calves taper to the ankle;
+    // standing, the knees sit a touch inside the hips like a real stance
     [-1, 1].forEach(k => {
-      const hip = V(k * 0.07, 0.53, 0.06);
-      const knee = standing ? V(k * 0.07, 0.3, 0.05) : V(k * 0.07, 0.53, -0.2);
+      const hip = V(k * 0.072, 0.53, 0.06);
+      const knee = standing ? V(k * 0.066, 0.3, 0.05) : V(k * 0.07, 0.53, -0.2);
       const ankle = standing ? V(k * 0.07, 0.09, 0.05) : V(k * 0.07, 0.1, -0.22);
-      limb(s, hip, knee, 0.055, SM.pants);
-      limb(s, knee, ankle, 0.048, SM.pants);
-      stripe(s, hip, knee, V(k, 0, 0), 0.055);
-      stripe(s, knee, ankle, V(k, 0, 0), 0.048);
-      const shoe = box(0.085, 0.06, 0.15, SM.shoe); shoe.position.set(k * 0.07, 0.04, standing ? 0.01 : -0.25); s.add(shoe);
+      limb(s, hip, knee, 0.064, SM.pants, true, 0.05);
+      limb(s, knee, ankle, 0.05, SM.pants, true, 0.04);
+      stripe(s, hip, knee, V(k, 0, 0), 0.057);
+      stripe(s, knee, ankle, V(k, 0, 0), 0.045);
+      // rounded sneaker, toe forward (-z)
+      const shoe = sph(0.05, SM.shoe, 16, 10); shoe.scale.set(0.9, 0.6, 1.45);
+      shoe.position.set(k * 0.07, 0.033, standing ? -0.01 : -0.26); s.add(shoe);
     });
+    // pelvis: wider than the waist, so the legs grow out of a rounded seat instead of a flat cut
+    const pelvis = sph(0.12, SM.pants, 20, 14); pelvis.scale.set(1.12, 0.62, 0.88); pelvis.position.set(0, 0.53, 0.055); s.add(pelvis);
     const belly = sph(0.125, SM.shirt, 20, 14); belly.scale.set(1, 0.75, 0.9); belly.position.set(0, 0.58, 0.05); s.add(belly);
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.125, 0.2, 18), SM.shirt); torso.position.set(0, 0.68, 0.05); s.add(torso);
-    const shoulders = sph(0.1, SM.shirt, 18, 12); shoulders.scale.set(1.25, 0.55, 0.95); shoulders.position.set(0, 0.77, 0.05); s.add(shoulders);
+    // shoulders slope down from the neck to the arms (trapezius), and a round deltoid caps each arm
+    const chest = sph(0.1, SM.shirt, 20, 14); chest.scale.set(1.12, 0.7, 0.95); chest.position.set(0, 0.765, 0.05); s.add(chest);
+    [-1, 1].forEach(k => {
+      limb(s, V(k * 0.035, 0.81, 0.05), V(k * 0.118, 0.762, 0.05), 0.05, SM.shirt, false, 0.046);
+      const delt = sph(0.05, SM.shirt, 16, 12); delt.scale.set(0.95, 1, 0.95); delt.position.set(k * 0.122, 0.752, 0.05); s.add(delt);
+    });
     // stand collar, open a little at the front
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.072, 0.06, 20, 1, true, 0.35, Math.PI * 2 - 0.7), SM.collar);
     collar.rotation.y = Math.PI; collar.position.set(0, 0.815, 0.04); s.add(collar);
@@ -1093,10 +1109,11 @@
     // seated: elbows rest on the desk edge (desk top y 0.76, its edge 0.12 in front of the chair),
     // forearms lie flat and the hands hold the book open. standing: arms hang at the sides.
     // the wearer's right arm (+x) also has a salute pose, swapped in while saluting
+    // standing arms hang a little away from the body, elbows soft, forearms turning in toward the thighs
     const arms = [-1, 1].map(k => standing
-      ? arm(s, k, V(k * 0.12, 0.77, 0.05), V(k * 0.16, 0.63, 0.06), V(k * 0.01, -0.13, -0.01), skin)
-      : arm(s, k, V(k * 0.12, 0.77, 0.05), V(k * 0.18, 0.81, -0.12), V(-k * 0.035, -0.005, -0.17), skin));
-    const salute = arm(s, 1, V(0.12, 0.77, 0.05), V(0.25, 0.84, -0.02), V(-0.12, 0.13, -0.075), skin);
+      ? arm(s, k, V(k * 0.124, 0.752, 0.05), V(k * 0.168, 0.625, 0.06), V(-k * 0.012, -0.125, -0.02), skin)
+      : arm(s, k, V(k * 0.124, 0.752, 0.05), V(k * 0.18, 0.81, -0.12), V(-k * 0.035, -0.005, -0.17), skin));
+    const salute = arm(s, 1, V(0.124, 0.752, 0.05), V(0.25, 0.84, -0.02), V(-0.12, 0.13, -0.075), skin);
     salute.g.visible = false;
 
     let flip = null;
