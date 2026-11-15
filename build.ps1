@@ -12,6 +12,8 @@ $utf8 = New-Object Text.UTF8Encoding($false)
 
 Copy-Item -LiteralPath (Join-Path $root 'moon\lroc_color_1k.jpg') -Destination (Join-Path $docs 'moon') -Force
 Copy-Item -LiteralPath (Join-Path $root 'moon\ldem_1k.jpg') -Destination (Join-Path $docs 'moon') -Force
+New-Item -ItemType Directory -Force (Join-Path $docs 'sound') | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'sound\bugle.mp3') -Destination (Join-Path $docs 'sound') -Force
 # serve files as-is (no Jekyll processing)
 [IO.File]::WriteAllText((Join-Path $docs '.nojekyll'), '', $utf8)
 Write-Output "docs/ built"

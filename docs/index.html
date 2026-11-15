@@ -221,6 +221,8 @@
     background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px;
   }
   .doing-row input::placeholder { color: var(--muted); }
+  .doing-row .bell-btn { flex: 0 0 auto; padding: 6px 8px; font-size: 15px; line-height: 1; }
+  .doing-row .bell-btn[aria-pressed="false"] { opacity: 0.55; }
   .doing-row .name-btn {
     flex: 0 1 auto; min-width: 0; max-width: 40%; padding: 6px 9px; font-size: 12px; font-weight: 600;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -396,6 +398,7 @@
       <option value="전역 계획 세우는 중"></option>
       <option value="잠깐 휴식"></option>
     </datalist>
+    <button id="bellBtn" class="bell-btn" type="button" aria-pressed="true" title="21:59 취침나팔 소리 켬">🔔</button>
   </div>
   <div class="choice" id="choice" role="alertdialog" aria-labelledby="choiceMsg" hidden>
     <div class="label">친구 방</div>
@@ -466,6 +469,7 @@
       <table class="guide-time">
         <tr><th>21:00</th><td>불이 켜져요</td></tr>
         <tr><th>21:30</th><td>자리에 앉아 오늘의 목표를 적어요</td></tr>
+        <tr><th>21:59</th><td>취침나팔이 울려요. 끄려면 아래 🔔을 눌러요</td></tr>
         <tr><th>22:00–24:00</th><td>연등 시간. 30분마다 한마디가 바뀌어요</td></tr>
         <tr><th>23:50</th><td>내일 할 일을 적으며 마무리해요</td></tr>
         <tr><th>24:00</th><td>불이 꺼져요. 모니터는 켜져 있어 조금 더 머물 수 있어요</td></tr>
@@ -3241,6 +3245,59 @@
   }
   let focusAt = 0;
   fontsReady.then(() => { focusKey = ''; });   // redraw once the web fonts arrive
+
+  // ---------- 21:59 bugle ----------
+  // The bugle (the user's own recording, sound/bugle.mp3) plays once at 21:59 on every open page.
+  // Browsers only let a page play sound after the visitor has tapped or pressed a key on it, so the
+  // first interaction unlocks the audio element. A setInterval (not the render loop) watches the clock
+  // so it still fires in a background tab. 🔔 turns it off on this device; ?bell=1 plays it right away.
+  (() => {
+    const BELL_AT = 21 * 60 + 59;
+    const btn = $('bellBtn');
+    let on = true;
+    try { on = localStorage.getItem('saji-bell') !== 'off'; } catch (e) { /* storage unavailable */ }
+    const audio = new Audio('sound/bugle.mp3');
+    audio.preload = 'auto'; audio.volume = 0.6;
+    let unlocked = false, playedDay = '';
+    const unlock = () => {
+      if (unlocked) return;
+      unlocked = true;
+      // a silent play/pause on a user gesture lets later play() calls through
+      audio.muted = true;
+      audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; })
+        .catch(() => { audio.muted = false; unlocked = false; });
+    };
+    ['pointerdown', 'keydown', 'touchend'].forEach(ev => window.addEventListener(ev, unlock, { capture: true, passive: true }));
+    const play = () => {
+      audio.currentTime = 0; audio.muted = false;
+      audio.play().catch(() => { /* not unlocked yet: no sound this time */ });
+    };
+    const show = () => {
+      btn.setAttribute('aria-pressed', String(on));
+      btn.textContent = on ? '🔔' : '🔕';
+      btn.title = on ? '21:59 취침나팔 소리 켬 (눌러서 끄기)' : '21:59 취침나팔 소리 끔 (눌러서 켜기)';
+    };
+    show();
+    btn.addEventListener('click', () => {
+      on = !on;
+      try { localStorage.setItem('saji-bell', on ? 'on' : 'off'); } catch (e) { /* storage unavailable */ }
+      if (!on) audio.pause();
+      show();
+      say('취침나팔', on ? '21:59에 취침나팔 소리가 나옵니다.' : '취침나팔 소리를 껐습니다. 🔕을 누르면 다시 켜져요.');
+    });
+    setInterval(() => {
+      const d = new Date();
+      const day = ymd(d);
+      if (d.getHours() * 60 + d.getMinutes() !== BELL_AT || playedDay === day) return;
+      playedDay = day;   // only once per evening, even if several ticks land in the same minute
+      if (on) play();
+    }, 1000);
+    if (new URLSearchParams(location.search).get('bell') === '1') {
+      say('취침나팔', '화면을 한 번 누르면 취침나팔 소리가 나옵니다.');
+      const once = () => { window.removeEventListener('pointerdown', once, true); window.removeEventListener('keydown', once, true); play(); };
+      window.addEventListener('pointerdown', once, true); window.addEventListener('keydown', once, true);
+    }
+  })();
   function stepFocus(now) {
     if (now - focusAt < 250) return;
     focusAt = now; drawFocus();
