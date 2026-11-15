@@ -3257,7 +3257,7 @@
     let on = true;
     try { on = localStorage.getItem('saji-bell') !== 'off'; } catch (e) { /* storage unavailable */ }
     const audio = new Audio('sound/bugle.mp3');
-    audio.preload = 'auto'; audio.volume = 0.6;
+    audio.preload = 'auto'; audio.volume = 0.25;   // the recording itself is very loud
     let unlocked = false, playedDay = '';
     const unlock = () => {
       if (unlocked) return;
