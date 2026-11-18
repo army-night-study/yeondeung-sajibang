@@ -145,6 +145,13 @@
   .board-list td:first-child { text-align: center; width: 2.5em; font-weight: 700; }
   .board-list tbody tr + tr { border-top: 1px solid rgba(42, 38, 51, 0.08); }
   .board-list tr.me { background: rgba(122, 90, 46, 0.14); }
+  .corps-group { display: grid; gap: 6px; }
+  .corps-group h3 { margin: 0; font-size: 11px; letter-spacing: 0.12em; color: #6b5a3e; font-weight: 600; }
+  .corps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .corps-grid button { padding: 11px 4px; font-size: 14px; font-weight: 600; min-width: 0; }
+  .corps-grid button[aria-pressed="true"] { background: #2f3a28; color: #f1e8d4; border-color: transparent; }
+  #corpsEnter:disabled { opacity: 0.45; cursor: default; }
+  .board-sub { margin: 4px 0 0; font-family: "Gowun Batang", serif; font-size: 16px; font-weight: 700; }
   .diary-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .diary-head .eyebrow { font-size: 10px; letter-spacing: 0.16em; font-weight: 600; color: #7a5a2e; }
   .diary-head h2 { margin: 2px 0 0; font-family: "Gowun Batang", serif; font-weight: 700; font-size: 24px; line-height: 1.2; }
@@ -384,6 +391,7 @@
       <button id="nameSave" type="button">저장</button>
       <button id="nameReset" type="button">기본 이름</button>
       <button id="nameCancel" type="button">취소</button>
+      <button id="nameCorps" type="button">소속 바꾸기</button>
     </div>
   </div>
   <div class="doing-row">
@@ -449,7 +457,28 @@
       <thead><tr><td>순위</td><th>이름</th><td>오늘</td><td>누적</td></tr></thead>
       <tbody id="boardList"></tbody>
     </table>
+    <h3 class="board-sub">오늘 군단별 합계</h3>
+    <table class="board-list">
+      <thead><tr><td>순위</td><th>소속</th><td>인원</td><td>오늘 합계</td></tr></thead>
+      <tbody id="corpsList"></tbody>
+    </table>
     <p class="diary-note">지금 접속해 있는 사람만 보여요. 시간은 각자 기기에서 이 화면을 켜 둔 동안 잰 거예요.</p>
+  </div>
+</div>
+
+<!-- 소속 고르기: shown on entry until a corps is picked -->
+<div class="diary" id="corpsDlg" role="dialog" aria-modal="true" aria-labelledby="corpsTitle" hidden>
+  <div class="diary-card guide-card">
+    <div class="diary-head">
+      <div>
+        <div class="eyebrow">사이버지식정보방 입장</div>
+        <h2 id="corpsTitle">소속을 골라 주세요</h2>
+      </div>
+    </div>
+    <p class="guide-lead">소속별 연등 시간을 모아 <b>월간 베스트 부대</b>를 뽑아요. 군단·사령부 단위로만 고르고, 이름표에는 보이지 않아요.</p>
+    <div id="corpsGroups"></div>
+    <p class="diary-note">보안을 위해 사단·연대 같은 실제 부대명은 받지 않아요. 소속은 나중에 이름 버튼(✎)에서 바꿀 수 있어요.</p>
+    <button id="corpsEnter" class="primary" type="button" disabled>입장하기</button>
   </div>
 </div>
 
@@ -478,6 +507,7 @@
     <details>
       <summary>2. 들어오기</summary>
       <ul>
+        <li>처음 들어오면 <b>소속</b>(군단·사령부, 해군·공군 등)을 골라 입장해요. 소속별 연등 시간을 합쳐 <b>월간 베스트 부대</b>를 뽑아요. 이름표에는 보이지 않고, 이름 버튼(✎) → <b>소속 바꾸기</b>로 바꿀 수 있어요.</li>
         <li>들어온 순서대로 <b>용사1, 용사2…</b> 이름이 붙어요.</li>
         <li>아래 이름 버튼(✎)을 누르면 <b>닉네임</b>(최대 8자)으로 바꿀 수 있어요.</li>
         <li>사지방 하나에 <b>24명</b>까지 들어가요. 꽉 차면 옆 사지방으로 안내돼요.</li>
@@ -1683,7 +1713,18 @@
   const tagLayer = document.getElementById('tags');
   const avatars = new Map();
   let people = [];
-  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true, t: 0, T: 0,
+  // 소속: picked on entry from a fixed list (corps / command level only, never a real unit name),
+  // sent with my presence and summed per corps for the 월간 베스트 부대. Not shown on name tags.
+  const CORPS_GROUPS = [
+    ['육군 군단', [['c1', '1군단'], ['c2', '2군단'], ['c3', '3군단'], ['c5', '5군단'], ['c7', '7군단'], ['cs', '수도군단']]],
+    ['육군 사령부·직할', [['op2', '2작전사'], ['cdc', '수방사'], ['sw', '특전사'], ['adr', '육군 직할']]],
+    ['다른 군', [['navy', '해군'], ['af', '공군'], ['mc', '해병대'], ['mnd', '국직부대']]],
+  ];
+  const CORPS = new Map(CORPS_GROUPS.flatMap(g => g[1]));
+  const cleanCorps = v => (typeof v === 'string' && CORPS.has(v) ? v : '');
+  let myCorps = '';
+  try { myCorps = cleanCorps(localStorage.getItem('saji-corps')); } catch (e) { /* no storage: pick each visit */ }
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true, t: 0, T: 0, cp: myCorps,
     // where I stand when not seated (world x/z on the floor, ry = facing); start in the centre aisle
     x: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 0.6, ry: Math.PI };
   // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
@@ -1857,6 +1898,7 @@
         nick: cleanNick(pr.nick),
         t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0,
         T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0,
+        cp: cleanCorps(pr.cp),
         // floor position while walking: anything outside the room (or not a number) is dropped
         x: num(pr.x, -6, 6), z: num(pr.z, -5, 5), ry: num(pr.ry, -7, 7),
       });
@@ -1869,11 +1911,11 @@
     hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0, nick: me.nick,
       // seated, the seat says where I am; standing, my floor spot (cm precision)
       x: me.seat ? null : Math.round(me.x * 100) / 100, z: me.seat ? null : Math.round(me.z * 100) / 100,
-      ry: me.seat ? null : Math.round(me.ry * 100) / 100, t: me.t, T: me.T }).catch(() => {});
+      ry: me.seat ? null : Math.round(me.ry * 100) / 100, t: me.t, T: me.T, cp: me.cp }).catch(() => {});
     // the lobby copy (public 사지방 only): which 사지방, the name, and today's / total minutes.
     // Sent only when it changes, since publishMe also runs for every step I walk.
     if (lobbyRef && !privateCode) {
-      const lob = { hall: hallNo, nm: me.nick || (me.n ? '용사' + me.n : ''), t: me.t, T: me.T };
+      const lob = { hall: hallNo, nm: me.nick || (me.n ? '용사' + me.n : ''), t: me.t, T: me.T, cp: me.cp };
       const key = JSON.stringify(lob);
       if (key !== lobbySent) { lobbySent = key; lobbyRef.presence(lob).catch(() => {}); }
     }
@@ -2850,7 +2892,7 @@
   const typing = el => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
   window.addEventListener('keydown', e => {
     const k = KEYMAP[e.code];
-    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden || !$('guide').hidden || !$('boardDlg').hidden) return;
+    if (!k || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !$('diary').hidden || !$('guide').hidden || !$('boardDlg').hidden || !$('corpsDlg').hidden) return;
     e.preventDefault();
     if (me.seat) return;   // seated: keys do nothing until 일어서기
     keys.add(k);
@@ -3109,25 +3151,39 @@
   const fmtMin = m => (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`);
   function boardRows() {
     const rows = [];
-    const mine = { name: me.nick || '용사' + (me.n || ''), hall: hallNo, t: me.t, T: me.T, me: true };
+    const mine = { name: me.nick || '용사' + (me.n || ''), hall: hallNo, t: me.t, T: me.T, cp: me.cp, me: true };
     if (online && lobbyRef && !privateCode) {
       lobbyRef.peers().forEach(p => {
         if (p.kind !== 'viewer' || p.sameTab) return;
         const pr = p.presence || {}, h = num(pr.hall, 1, 999);
         if (!Number.isInteger(h)) return;
         rows.push({ name: cleanDoing(pr.nm).slice(0, 8) || '용사', hall: h,
-          t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0, T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0, me: false });
+          t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0, T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0, cp: cleanCorps(pr.cp), me: false });
       });
     } else if (online) {
-      roomPeople().forEach(p => { if (!p.isMe) rows.push({ name: p.nick || '용사' + (p.n || ''), hall: hallNo, t: p.t || 0, T: p.T || 0, me: false }); });
+      roomPeople().forEach(p => { if (!p.isMe) rows.push({ name: p.nick || '용사' + (p.n || ''), hall: hallNo, t: p.t || 0, T: p.T || 0, cp: p.cp || '', me: false }); });
     } else {
       // offline 체험: the simulated 용사들 get steady made-up times
-      npcs.forEach(p => rows.push({ name: '용사' + p.n, hall: 1, t: (p.n * 13) % 110, T: (p.days || 0) * 95 + p.n * 7, me: false }));
+      const ids = [...CORPS.keys()];
+      npcs.forEach(p => rows.push({ name: '용사' + p.n, hall: 1, t: (p.n * 13) % 110, T: (p.days || 0) * 95 + p.n * 7, cp: ids[(p.n * 5) % 6], me: false }));
     }
     rows.push(mine);
     rows.sort((a, b) => b.T - a.T || b.t - a.t || (a.me ? -1 : 1));
     rows.forEach((r, i) => (r.rank = i + 1));
     return rows;
+  }
+  // today's minutes summed per 소속 (people with no 소속 yet are left out), biggest first
+  function corpsRows(rows) {
+    const by = new Map();
+    rows.forEach(r => {
+      if (!r.cp) return;
+      const c = by.get(r.cp) || { cp: r.cp, name: CORPS.get(r.cp), n: 0, t: 0, mine: false };
+      c.n++; c.t += r.t; c.mine = c.mine || r.me;
+      by.set(r.cp, c);
+    });
+    const list = [...by.values()].sort((a, b) => b.t - a.t || b.n - a.n);
+    list.forEach((c, i) => (c.rank = i + 1));
+    return list;
   }
   const BOARD_W = 1.3, BOARD_H = 1.04, BOARD_Z = -3.75;
   const boardCanvas = canvasTex(640, 512, () => {});
@@ -3167,9 +3223,27 @@
       ctx.textAlign = 'right'; ctx.font = `20px ${BODY}`; ctx.fillStyle = '#c9cfbe'; ctx.fillText(fmtMin(r.t), cols.today, y);
       ctx.font = `700 21px ${BODY}`; ctx.fillStyle = '#f1eedc'; ctx.fillText(fmtMin(r.T), cols.total, y);
     });
-    center(ctx, '시간은 각자 기기에서 화면을 켜 둔 동안 재요 · 눌러서 전체 보기', `16px ${BODY}`, '#7f8770', w / 2, h - 22);
+    // bottom line: today's leading 소속
+    const cr = corpsRows(rows);
+    ctx.fillStyle = 'rgba(214,196,126,0.35)'; ctx.fillRect(24, h - 52, w - 48, 2);
+    center(ctx, cr.length ? `오늘 1위 소속 · ${cr[0].name} ${fmtMin(cr[0].t)} (${cr[0].n}명) · 눌러서 전체 보기` : '시간은 각자 기기에서 화면을 켜 둔 동안 재요 · 눌러서 전체 보기',
+      `${cr.length ? '600 18px' : '16px'} ${BODY}`, cr.length ? '#e6c55a' : '#7f8770', w / 2, h - 24);
     boardCanvas.tex.needsUpdate = true;
-    if (!$('boardDlg').hidden) fillBoardList(rows, scope);
+    if (!$('boardDlg').hidden) { fillBoardList(rows, scope); fillCorpsList(cr); }
+  }
+  function fillCorpsList(cr) {
+    const tb = $('corpsList'); tb.textContent = '';
+    if (!cr.length) {
+      const tr = document.createElement('tr'), td = document.createElement('th');
+      td.colSpan = 4; td.textContent = '아직 소속을 고른 사람이 없어요.'; tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    cr.forEach(c => {
+      const tr = document.createElement('tr'); if (c.mine) tr.className = 'me';
+      [String(c.rank), c.name + (c.mine ? ' (내 소속)' : ''), c.n + '명', fmtMin(c.t)].forEach((v, i) => {
+        const td = document.createElement(i === 1 ? 'th' : 'td'); td.textContent = v; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
   }
   function fillBoardList(rows, scope) {
     $('boardScope').textContent = `${scope} · 지금 접속 중 ${rows.length}명 · 누적 연등 시간 순`;
@@ -3542,7 +3616,43 @@
     // first visit on this browser: open it once by itself (not over the diary a QR code just opened)
     let seen = true;
     try { seen = localStorage.getItem('saji-guide-seen') === '1'; localStorage.setItem('saji-guide-seen', '1'); } catch (e) { /* no storage: don't nag */ }
-    if (!seen && !new URLSearchParams(location.search).has('d')) setTimeout(() => { if ($('diary').hidden) { g.hidden = false; keys.clear(); $('guideClose').focus(); } }, 1200);
+    const autoGuide = () => { if (!seen && !new URLSearchParams(location.search).has('d') && $('diary').hidden) { g.hidden = false; keys.clear(); $('guideClose').focus(); } };
+
+    // 소속 고르기: on entry, until a 소속 is picked (then the guide, on a first visit)
+    const dlg = $('corpsDlg'), enter = $('corpsEnter');
+    let pick = myCorps;
+    const groups = $('corpsGroups');
+    CORPS_GROUPS.forEach(([title, list]) => {
+      const sec = document.createElement('div'); sec.className = 'corps-group';
+      const h = document.createElement('h3'); h.textContent = title; sec.appendChild(h);
+      const grid = document.createElement('div'); grid.className = 'corps-grid';
+      list.forEach(([id, name]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.dataset.cp = id;
+        b.addEventListener('click', () => { pick = id; mark(); });
+        grid.appendChild(b);
+      });
+      sec.appendChild(grid); groups.appendChild(sec);
+    });
+    groups.style.display = 'grid'; groups.style.gap = '12px';
+    const mark = () => {
+      groups.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cp === pick)));
+      enter.disabled = !pick;
+      enter.textContent = pick ? `${CORPS.get(pick)}(으)로 입장하기` : '입장하기';
+    };
+    const openCorps = () => { pick = me.cp; mark(); dlg.hidden = false; keys.clear(); (groups.querySelector('[aria-pressed="true"]') || groups.querySelector('button')).focus(); };
+    enter.addEventListener('click', () => {
+      if (!pick) return;
+      const first = !me.cp, changed = pick !== me.cp;
+      me.cp = pick;
+      try { localStorage.setItem('saji-corps', pick); } catch (e) { /* this visit only */ }
+      dlg.hidden = true;
+      publishMe(); boardDirty = true;
+      if (first) { say('입장', `${CORPS.get(pick)} 소속으로 입장했습니다. 오늘 연등 시간이 ${CORPS.get(pick)} 합계에 더해져요.`); setTimeout(autoGuide, 400); }
+      else if (changed) say('소속', `소속을 ${CORPS.get(pick)}(으)로 바꿨습니다.`);
+    });
+    $('nameCorps').addEventListener('click', () => { $('nameEdit').hidden = true; openCorps(); });
+    if (!me.cp) openCorps();
+    else setTimeout(autoGuide, 1200);
   }
   $('btnSalute').addEventListener('click', salute);
   $('btnSit').addEventListener('click', () => {
