@@ -14,6 +14,8 @@ Copy-Item -LiteralPath (Join-Path $root 'moon\lroc_color_1k.jpg') -Destination (
 Copy-Item -LiteralPath (Join-Path $root 'moon\ldem_1k.jpg') -Destination (Join-Path $docs 'moon') -Force
 New-Item -ItemType Directory -Force (Join-Path $docs 'sound') | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'sound\bugle.mp3') -Destination (Join-Path $docs 'sound') -Force
+New-Item -ItemType Directory -Force (Join-Path $docs 'insignia') | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $root 'insignia') -Filter *.svg | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $docs 'insignia') -Force }
 # serve files as-is (no Jekyll processing)
 [IO.File]::WriteAllText((Join-Path $docs '.nojekyll'), '', $utf8)
 Write-Output "docs/ built"

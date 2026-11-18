@@ -148,8 +148,9 @@
   .corps-group { display: grid; gap: 6px; }
   .corps-group h3 { margin: 0; font-size: 11px; letter-spacing: 0.12em; color: #6b5a3e; font-weight: 600; }
   .corps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .corps-grid button { padding: 11px 4px; font-size: 14px; font-weight: 600; min-width: 0; }
-  .corps-grid button[aria-pressed="true"] { background: #2f3a28; color: #f1e8d4; border-color: transparent; }
+  .corps-grid button { padding: 8px 4px 9px; font-size: 14px; font-weight: 600; min-width: 0; display: grid; justify-items: center; gap: 5px; }
+  .corps-grid img { width: 44px; height: 44px; object-fit: contain; display: block; }
+  .diary-card .corps-grid button[aria-pressed="true"], .diary-card .corps-grid button[aria-pressed="true"]:hover { background: #2f3a28; color: #f1e8d4; border-color: #2f3a28; }
   #corpsEnter:disabled { opacity: 0.45; cursor: default; }
   .board-sub { margin: 4px 0 0; font-family: "Gowun Batang", serif; font-size: 16px; font-weight: 700; }
   .diary-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -3627,7 +3628,12 @@
       const h = document.createElement('h3'); h.textContent = title; sec.appendChild(h);
       const grid = document.createElement('div'); grid.className = 'corps-grid';
       list.forEach(([id, name]) => {
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.dataset.cp = id;
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.cp = id;
+        // the unit's mark (Wikimedia Commons, Korean government works); src is set when the picker first opens
+        const img = document.createElement('img'); img.alt = ''; img.dataset.src = `insignia/${id}.svg`; img.decoding = 'async';
+        img.onerror = () => img.remove();   // e.g. on claude.ai, where the files aren't published
+        const span = document.createElement('span'); span.textContent = name;
+        b.append(img, span);
         b.addEventListener('click', () => { pick = id; mark(); });
         grid.appendChild(b);
       });
@@ -3639,7 +3645,9 @@
       enter.disabled = !pick;
       enter.textContent = pick ? `${CORPS.get(pick)}(으)로 입장하기` : '입장하기';
     };
-    const openCorps = () => { pick = me.cp; mark(); dlg.hidden = false; keys.clear(); (groups.querySelector('[aria-pressed="true"]') || groups.querySelector('button')).focus(); };
+    const openCorps = () => {
+      groups.querySelectorAll('img[data-src]').forEach(i => { i.src = i.dataset.src; i.removeAttribute('data-src'); });
+      pick = me.cp; mark(); dlg.hidden = false; keys.clear(); (groups.querySelector('[aria-pressed="true"]') || groups.querySelector('button')).focus(); };
     enter.addEventListener('click', () => {
       if (!pick) return;
       const first = !me.cp, changed = pick !== me.cp;

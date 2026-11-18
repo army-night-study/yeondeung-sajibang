@@ -53,4 +53,6 @@
 
 ## 출처
 
+부대 마크(`insignia/`): Wikimedia Commons에 올라온 대한민국 국방부·육군·해군·공군·해병대의 공공저작물(저작권법 제24조의2, 출처 표시 조건으로 자유 이용). 원본: ROKA 1st/2nd/3rd/5th/7th Maneuver/Capital Corps Insignia, ROKA 2nd Operations Command / Capital Defense Command / Special Warfare Command Insignia, Coat of arms of the Republic of Korea Army, Emblem of the Republic of Korea Navy / Air Force, Seal of the Republic of Korea Marine Corps, Emblem of the Ministry of National Defense (South Korea). 휘장은 저작권과 별개로 사용 제한이 있을 수 있어 소속 고르기 화면에서만 씁니다.
+
 달 텍스처: NASA Scientific Visualization Studio, [CGI Moon Kit](https://svs.gsfc.nasa.gov/4720) (LRO LROC 컬러 모자이크, LOLA 고도 데이터).
