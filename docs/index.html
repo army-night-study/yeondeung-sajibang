@@ -476,7 +476,7 @@
         <h2 id="corpsTitle">소속을 골라 주세요</h2>
       </div>
     </div>
-    <p class="guide-lead">소속별 연등 시간을 모아 <b>월간 베스트 부대</b>를 뽑아요. 군단·사령부 단위로만 고르고, 이름표에는 보이지 않아요.</p>
+    <p class="guide-lead">소속별 연등 시간을 모아 <b>월간 베스트 부대</b>를 뽑아요. 군단·사령부 단위로만 고르고, 이름 앞에 붙어요(예: 3군단_용사1).</p>
     <div id="corpsGroups"></div>
     <p class="diary-note">보안을 위해 사단·연대 같은 실제 부대명은 받지 않아요. 소속은 나중에 이름 버튼(✎)에서 바꿀 수 있어요.</p>
     <button id="corpsEnter" class="primary" type="button" disabled>입장하기</button>
@@ -508,7 +508,7 @@
     <details>
       <summary>2. 들어오기</summary>
       <ul>
-        <li>처음 들어오면 <b>소속</b>(군단·사령부, 해군·공군 등)을 골라 입장해요. 소속별 연등 시간을 합쳐 <b>월간 베스트 부대</b>를 뽑아요. 이름표에는 보이지 않고, 이름 버튼(✎) → <b>소속 바꾸기</b>로 바꿀 수 있어요.</li>
+        <li>처음 들어오면 <b>소속</b>(군단·사령부, 해군·공군 등)을 골라 입장해요. 소속별 연등 시간을 합쳐 <b>월간 베스트 부대</b>를 뽑아요. 이름 앞에 소속이 붙고(예: 3군단_용사1), 이름 버튼(✎) → <b>소속 바꾸기</b>로 바꿀 수 있어요.</li>
         <li>들어온 순서대로 <b>용사1, 용사2…</b> 이름이 붙어요.</li>
         <li>아래 이름 버튼(✎)을 누르면 <b>닉네임</b>(최대 8자)으로 바꿀 수 있어요.</li>
         <li>사지방 하나에 <b>24명</b>까지 들어가요. 꽉 차면 옆 사지방으로 안내돼요.</li>
@@ -1742,7 +1742,9 @@
     return /^용사\s*\d*$/.test(v) || /\(나\)/.test(v) ? '' : v;
   };
   try { me.nick = cleanNick(localStorage.getItem('saji-nick')); } catch (e) { me.nick = ''; }
-  const label = p => (p.nick || '용사' + (p.n || '')) + (p.isMe ? ' (나)' : '');
+  // names are shown with the 소속 in front: "3군단_용사1"
+  const withCorps = (cp, name) => (cp && CORPS.has(cp) ? `${CORPS.get(cp)}_${name}` : name);
+  const label = p => withCorps(p.cp, p.nick || '용사' + (p.n || '')) + (p.isMe ? ' (나)' : '');
 
   // two people on one seat: the earlier seatAt keeps it
   function seatOwners(list) {
@@ -1860,7 +1862,8 @@
     const add = seatNo => {
       if (me.seat === seatNo || npcs.some(p => p.seat === seatNo)) return;
       npcs.push({ id: 'npc' + next, n: next++, seat: seatNo, seatAt: Date.now(), saluteAt: 0, joinedAt: Date.now(), isMe: false,
-        doing: NPC_DOING[Math.floor(Math.random() * NPC_DOING.length)], days: Math.floor(Math.random() * 30) });
+        doing: NPC_DOING[Math.floor(Math.random() * NPC_DOING.length)], days: Math.floor(Math.random() * 30),
+        cp: [...CORPS.keys()][(next * 5) % 6] });
       render();
     };
     [...takenSet].sort(() => rand() - 0.5).forEach((s, i) => setTimeout(() => add(s), 700 + i * 500));
@@ -2559,7 +2562,7 @@
   }
 
   function updateHud() {
-    const myName = me.nick || '용사' + (me.n || '');
+    const myName = withCorps(me.cp, me.nick || '용사' + (me.n || ''));
     if ($('nameBtnText').textContent !== myName) $('nameBtnText').textContent = myName;
     $('goals').hidden = !me.seat;
     $('seated').textContent = seats.filter(s => s.taken || s.mine).length;
@@ -3152,21 +3155,21 @@
   const fmtMin = m => (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`);
   function boardRows() {
     const rows = [];
-    const mine = { name: me.nick || '용사' + (me.n || ''), hall: hallNo, t: me.t, T: me.T, cp: me.cp, me: true };
+    const mine = { name: withCorps(me.cp, me.nick || '용사' + (me.n || '')), hall: hallNo, t: me.t, T: me.T, cp: me.cp, me: true };
     if (online && lobbyRef && !privateCode) {
       lobbyRef.peers().forEach(p => {
         if (p.kind !== 'viewer' || p.sameTab) return;
         const pr = p.presence || {}, h = num(pr.hall, 1, 999);
         if (!Number.isInteger(h)) return;
-        rows.push({ name: cleanDoing(pr.nm).slice(0, 8) || '용사', hall: h,
+        rows.push({ name: withCorps(cleanCorps(pr.cp), cleanDoing(pr.nm).slice(0, 8) || '용사'), hall: h,
           t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0, T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0, cp: cleanCorps(pr.cp), me: false });
       });
     } else if (online) {
-      roomPeople().forEach(p => { if (!p.isMe) rows.push({ name: p.nick || '용사' + (p.n || ''), hall: hallNo, t: p.t || 0, T: p.T || 0, cp: p.cp || '', me: false }); });
+      roomPeople().forEach(p => { if (!p.isMe) rows.push({ name: withCorps(p.cp, p.nick || '용사' + (p.n || '')), hall: hallNo, t: p.t || 0, T: p.T || 0, cp: p.cp || '', me: false }); });
     } else {
       // offline 체험: the simulated 용사들 get steady made-up times
       const ids = [...CORPS.keys()];
-      npcs.forEach(p => rows.push({ name: '용사' + p.n, hall: 1, t: (p.n * 13) % 110, T: (p.days || 0) * 95 + p.n * 7, cp: ids[(p.n * 5) % 6], me: false }));
+      npcs.forEach(p => { const cp = p.cp || ids[(p.n * 5) % 6]; rows.push({ name: withCorps(cp, '용사' + p.n), hall: 1, t: (p.n * 13) % 110, T: (p.days || 0) * 95 + p.n * 7, cp, me: false }); });
     }
     rows.push(mine);
     rows.sort((a, b) => b.T - a.T || b.t - a.t || (a.me ? -1 : 1));
@@ -3217,8 +3220,11 @@
       ctx.font = `${r.rank <= 3 ? '700 24px' : '600 21px'} ${BODY}`;
       ctx.fillStyle = r.rank === 1 ? '#e6c55a' : r.rank === 2 ? '#d0d4c8' : r.rank === 3 ? '#d39a62' : '#c9cfbe';
       ctx.textAlign = 'center'; ctx.fillText(String(r.rank), cols.rank, y);
-      ctx.textAlign = 'left'; ctx.fillStyle = r.me ? '#fff6d8' : '#eef0e4'; ctx.font = `600 21px ${BODY}`;
+      ctx.textAlign = 'left'; ctx.fillStyle = r.me ? '#fff6d8' : '#eef0e4';
       const label = r.name + (r.me ? ' (나)' : '');
+      // "소속_닉네임" can be long: shrink it to leave room for the 사지방 number and today's time
+      const maxW = cols.today - 100 - cols.name - (scope === '전체 사지방' ? 80 : 0);
+      let px = 21; do ctx.font = `600 ${px}px ${BODY}`; while (ctx.measureText(label).width > maxW && --px > 13);
       ctx.fillText(label, cols.name, y);
       if (scope === '전체 사지방') { const lw = ctx.measureText(label).width; ctx.font = `16px ${BODY}`; ctx.fillStyle = '#8f977f'; ctx.fillText(`제${r.hall} 사지방`, cols.name + lw + 10, y + 1); }
       ctx.textAlign = 'right'; ctx.font = `20px ${BODY}`; ctx.fillStyle = '#c9cfbe'; ctx.fillText(fmtMin(r.t), cols.today, y);
@@ -3654,7 +3660,7 @@
       me.cp = pick;
       try { localStorage.setItem('saji-corps', pick); } catch (e) { /* this visit only */ }
       dlg.hidden = true;
-      publishMe(); boardDirty = true;
+      publishMe(); render(); boardDirty = true;
       if (first) { say('입장', `${CORPS.get(pick)} 소속으로 입장했습니다. 오늘 연등 시간이 ${CORPS.get(pick)} 합계에 더해져요.`); setTimeout(autoGuide, 400); }
       else if (changed) say('소속', `소속을 ${CORPS.get(pick)}(으)로 바꿨습니다.`);
     });
