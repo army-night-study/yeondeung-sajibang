@@ -368,7 +368,7 @@
   <div class="brand">
     <span class="unit">육군 · 생활관</span>
     <h1>사이버지식정보방</h1>
-    <p>연등 22:00 – 24:00 · 24:00 일괄 소등</p>
+    <p>19:00부터 연등 기록 · 24:00 일괄 소등</p>
   </div>
   <div class="meter" aria-live="polite">
     <div class="clock" id="clock">--:--</div>
@@ -463,7 +463,7 @@
       <thead><tr><td>순위</td><th>소속</th><td>인원</td><td>오늘 합계</td></tr></thead>
       <tbody id="corpsList"></tbody>
     </table>
-    <p class="diary-note">지금 접속해 있는 사람만 보여요. 시간은 각자 기기에서 이 화면을 켜 둔 동안 잰 거예요.</p>
+    <p class="diary-note">지금 접속해 있는 사람만 보여요. 시간은 각자 기기에서 19:00부터 이 화면을 켜 둔 동안 잰 거예요.</p>
   </div>
 </div>
 
@@ -497,10 +497,11 @@
     <details open>
       <summary>1. 운영 시간</summary>
       <table class="guide-time">
+        <tr><th>19:00</th><td>연등 시간 기록이 시작돼요. 화면을 켜 둔 동안 오늘 시간이 쌓여요</td></tr>
         <tr><th>21:00</th><td>불이 켜져요</td></tr>
         <tr><th>21:30</th><td>자리에 앉아 오늘의 목표를 적어요</td></tr>
         <tr><th>21:59</th><td>취침나팔이 울려요. 끄려면 아래 🔔을 눌러요</td></tr>
-        <tr><th>22:00–24:00</th><td>연등 시간. 30분마다 한마디가 바뀌어요</td></tr>
+        <tr><th>22:00–23:30</th><td>30분마다 한마디가 바뀌어요</td></tr>
         <tr><th>23:50</th><td>내일 할 일을 적으며 마무리해요</td></tr>
         <tr><th>24:00</th><td>불이 꺼져요. 모니터는 켜져 있어 조금 더 머물 수 있어요</td></tr>
       </table>
@@ -528,7 +529,7 @@
       <ul>
         <li><b>오늘의 목표 2가지</b>를 적고 <b>완료</b>를 누르면 내 모니터에 떠요. 나만 보여요. 바꾸려면 <b>수정</b>을 눌러요.</li>
         <li><b>지금 하는 일</b>을 적으면 내 머리 위에 떠서 모두에게 보여요. (예: 토익 단어 암기)</li>
-        <li>모니터 위쪽 <b>집중 타이머</b>가 22:00부터 2시간을 세요. 자정까지 몇 분 남았는지, 몇 분 더 집중하면 되는지 보여 줘요.</li>
+        <li>내 모니터 맨 위에 <b>오늘 기록</b>(19:00부터 쌓인 시간)이 보여요. 기록은 다음 날 아침 6시까지 이어져요.</li>
       </ul>
     </details>
     <details>
@@ -991,9 +992,9 @@
       ctx.fillStyle = '#f1eedc'; ctx.fillRect(0, 0, cw, ch);
       ctx.fillStyle = '#2f3a28'; ctx.fillRect(0, 0, cw, 78);
       center(ctx, '연등 운영 안내', `46px ${DISPLAY}`, '#f1eedc', cw / 2, 42);
-      center(ctx, '22:00 – 24:00', `76px ${DISPLAY}`, '#2f3a28', cw / 2, 150);
+      center(ctx, '19:00 기록 시작', `66px ${DISPLAY}`, '#2f3a28', cw / 2, 150);
       ctx.font = `27px ${BODY}`; ctx.fillStyle = '#2b2f26'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ['· 점호 후 당직사관 승인 인원에 한함', '· 사용 전 출입 기록부 작성', '· 24:00 일괄 소등 · PC 종료'].forEach((t, i) => ctx.fillText(t, 40, 238 + i * 44));
+      ['· 19:00부터 앉아 있는 시간이 기록됨', '· 사용 전 출입 기록부 작성', '· 24:00 일괄 소등 · PC 종료'].forEach((t, i) => ctx.fillText(t, 40, 238 + i * 44));
     });
     poster(0.8, 1.1, new THREE.Vector3(RW, 1.75, 2.0), -Math.PI / 2, (ctx, cw, ch) => {
       const g = ctx.createLinearGradient(0, 0, 0, ch);
@@ -2103,11 +2104,15 @@
     const ctx = mineScreen.ctx, w = 512, h = 300;
     ctx.fillStyle = '#0f1a12'; ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 40);
-    center(ctx, goalsLocked ? '목표 확정 · 연등 학습 중' : '로그인 완료 · 목표 작성 중', `24px ${BODY}`, '#1e1c0e', w / 2, 22);
-    // the top 90 px are covered by the focus timer strip (see "focus timer on every monitor")
-    center(ctx, '오늘의 목표', `36px ${DISPLAY}`, '#e8ebdc', w / 2, 118);
+    // header: today's recorded time (counted from 19:00, see "접속 시간")
+    const t = me.t || 0, rec = t >= 60 ? `${Math.floor(t / 60)}시간 ${t % 60}분` : `${t}분`;
+    const hr = new Date().getHours(), recording = hr >= 19 || hr < 6;
+    const head = `${goalsLocked ? '목표 확정' : '목표 작성 중'} · 오늘 기록 ${rec}${recording ? '' : ' (19:00부터)'}`;
+    let px = 24; do ctx.font = `${px}px ${BODY}`; while (ctx.measureText(head).width > w - 24 && --px > 14);
+    center(ctx, head, `${px}px ${BODY}`, '#1e1c0e', w / 2, 22);
+    center(ctx, '오늘의 목표', `36px ${DISPLAY}`, '#e8ebdc', w / 2, 88);
     goals.forEach((g, i) => {
-      const y = 170 + i * 56, x = 52;
+      const y = 150 + i * 60, x = 52;
       ctx.strokeStyle = '#c3cab2'; ctx.lineWidth = 3; ctx.strokeRect(x, y - 16, 32, 32);
       if (g.done) {
         ctx.strokeStyle = '#d6c47e'; ctx.lineWidth = 5;
@@ -2368,23 +2373,26 @@
   }).catch(() => { diaryStorageOk = false; });
 
   // ---------- 접속 시간 (today / total) ----------
-  // Counted in this browser while the page is open and on screen (a hidden tab doesn't count).
-  // "Today" follows the diary's day, so a night that runs past midnight stays one day. The minutes
-  // go out with presence for the time board; there is no server, so each person reports their own.
+  // Counted in this browser while the page is open and on screen (a hidden tab doesn't count), and
+  // only from 19:00 until the day rolls over at 06:00. "Today" follows the diary's day, so a night
+  // that runs past midnight stays one day. The minutes go out with presence for the time board;
+  // there is no server, so each person reports their own.
   const TIME_KEY = 'saji-time';
+  const REC_FROM = 19;   // hour the evening record starts (it runs until recordDay's 06:00 rollover)
   let boardDirty = true;
   setTimeout(() => {   // after the rest of the page has set itself up (recordDay needs pad)
     let s = { day: recordDay(), today: 0, total: 0 };
     try { const v = JSON.parse(localStorage.getItem(TIME_KEY) || 'null'); if (v && typeof v.total === 'number') s = Object.assign(s, v); } catch (e) { /* fresh */ }
     const save = () => { try { localStorage.setItem(TIME_KEY, JSON.stringify(s)); } catch (e) { /* this visit only */ } };
-    let last = Date.now(), savedAt = 0;
+    let last = Date.now(), savedAt = 0, wasRec = null;
     const tick = () => {
       const now = Date.now(), dt = Math.min(5, Math.max(0, (now - last) / 1000)); last = now;
       const day = recordDay();
       if (day !== s.day) { s.day = day; s.today = 0; }
-      if (!document.hidden) { s.today += dt; s.total += dt; }
+      const hr = new Date(now).getHours(), rec = hr >= REC_FROM || hr < 6;
+      if (rec && !document.hidden) { s.today += dt; s.total += dt; }
       const t = Math.floor(s.today / 60), T = Math.floor(s.total / 60);
-      if (t !== me.t || T !== me.T) { me.t = t; me.T = T; publishMe(); boardDirty = true; }
+      if (t !== me.t || T !== me.T || rec !== wasRec) { wasRec = rec; me.t = t; me.T = T; publishMe(); boardDirty = true; drawMine(); }
       if (now - savedAt > 15000) { savedAt = now; save(); }
     };
     setInterval(tick, 1000);
@@ -2577,15 +2585,18 @@
     const d = new Date(), h = d.getHours(), m = d.getMinutes();
     $('clock').textContent = pad(h) + ':' + pad(m);
     const remain = $('remain');
-    if (h >= 22) {
+    if (h >= 21) {
       const left = (24 - h) * 60 - m;
-      remain.textContent = `소등까지 ${Math.floor(left / 60)}시간 ${pad(left % 60)}분`;
+      remain.textContent = `기록 중 · 소등까지 ${Math.floor(left / 60)}시간 ${pad(left % 60)}분`;
       remain.classList.remove('off');
-    } else if (h === 21) {
-      remain.textContent = '점등 · 22:00 연등 시작';
+    } else if (h >= 19) {
+      remain.textContent = '기록 중 · 21:00 점등';
+      remain.classList.remove('off');
+    } else if (h < 6) {
+      remain.textContent = '소등 중 · 06:00까지 기록';
       remain.classList.remove('off');
     } else {
-      remain.textContent = '소등 중 · 21:00 점등';
+      remain.textContent = '19:00부터 기록 시작';
       remain.classList.add('off');
     }
     // room lights follow the barracks schedule: on at 21:00, off at 24:00 until 21:00 the next evening
@@ -3233,7 +3244,7 @@
     // bottom line: today's leading 소속
     const cr = corpsRows(rows);
     ctx.fillStyle = 'rgba(214,196,126,0.35)'; ctx.fillRect(24, h - 52, w - 48, 2);
-    center(ctx, cr.length ? `오늘 1위 소속 · ${cr[0].name} ${fmtMin(cr[0].t)} (${cr[0].n}명) · 눌러서 전체 보기` : '시간은 각자 기기에서 화면을 켜 둔 동안 재요 · 눌러서 전체 보기',
+    center(ctx, cr.length ? `오늘 1위 소속 · ${cr[0].name} ${fmtMin(cr[0].t)} (${cr[0].n}명) · 눌러서 전체 보기` : '19:00부터 화면을 켜 둔 시간을 재요 · 눌러서 전체 보기',
       `${cr.length ? '600 18px' : '16px'} ${BODY}`, cr.length ? '#e6c55a' : '#7f8770', w / 2, h - 24);
     boardCanvas.tex.needsUpdate = true;
     if (!$('boardDlg').hidden) { fillBoardList(rows, scope); fillCorpsList(cr); }
@@ -3268,65 +3279,6 @@
     if (now - boardAt < (boardDirty ? 800 : 3000)) return;
     boardAt = now; boardDirty = false; drawBoard();
   }
-  // ---------- focus timer on every monitor ----------
-  // A two-hour timer from 22:00 to 24:00 runs along the top of each screen (over my goals screen's header bar). It is the same clock
-  // for everyone, so one shared canvas is drawn once a second and every seat's strip shows it.
-  const FOCUS_START = 22 * 3600, FOCUS_END = 24 * 3600, FOCUS_LEN = FOCUS_END - FOCUS_START;
-  const FOCUS_H = 90;   // canvas px on a 512 px wide strip (the screen is 512 x 300 on my own monitor)
-  const focusTimer = canvasTex(512, FOCUS_H, () => {});
-  const focusMat = new THREE.MeshBasicMaterial({ map: focusTimer.tex });
-  const focusGeo = new THREE.PlaneGeometry(0.51, 0.51 * FOCUS_H / 512);
-  seats.forEach(seat => {
-    const m = new THREE.Mesh(focusGeo, focusMat);
-    m.position.set(0, 1.0 + 0.15 - 0.51 * FOCUS_H / 512 / 2, -0.1855);   // top edge: the goals panel covers the bottom when seated
-    seat.group.add(m);
-  });
-  const hms = s => `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
-  let focusKey = '';
-  function drawFocus() {
-    const d = new Date();
-    const sec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-    let phase, big, line1, line2, frac;
-    if (sec >= FOCUS_START) {                 // 22:00–23:59: counting down to midnight
-      const left = FOCUS_END - sec, done = sec - FOCUS_START;
-      const leftMin = Math.ceil(left / 60);
-      phase = 'run'; big = hms(left); frac = done / FOCUS_LEN;
-      line1 = `집중 타이머 · 자정까지 ${leftMin}분`;
-      line2 = `${Math.floor(done / 60)}분 집중 · ${leftMin}분 더 집중`;
-    } else if (sec < 6 * 3600) {              // after midnight: today's two hours are over
-      phase = 'end'; big = '0:00:00'; frac = 1;
-      line1 = '집중 타이머 끝';
-      line2 = '오늘 120분 연등 완료 · 수고했어요';
-    } else {                                  // before 22:00: waiting to start
-      const until = FOCUS_START - sec;
-      phase = 'wait'; big = hms(FOCUS_LEN); frac = 0;
-      const h = Math.floor(until / 3600), m = Math.ceil((until % 3600) / 60);
-      line1 = '집중 타이머 · 22:00 시작';
-      line2 = `시작까지 ${h ? h + '시간 ' : ''}${m}분`;
-    }
-    const key = big + line1 + line2;
-    if (key === focusKey) return;
-    focusKey = key;
-    const ctx = focusTimer.ctx, w = 512, h = FOCUS_H;
-    ctx.fillStyle = '#0a120d'; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#d6c47e'; ctx.fillRect(0, 0, w, 3);
-    ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
-    ctx.fillStyle = phase === 'run' ? (FOCUS_END - sec <= 600 ? '#ff8a6a' : '#f4f6ea') : '#7f8975';
-    ctx.font = `bold 44px ${DISPLAY}`; ctx.fillText(big, w - 14, 40);
-    const room = w - 14 - ctx.measureText(big).width - 16 - 14;   // what's left for the two lines on the left
-    const fit = (text, px, weight) => {
-      do ctx.font = `${weight}${px}px ${BODY}`; while (ctx.measureText(text).width > room && --px > 12);
-    };
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#d6c47e'; fit(line1, 21, 'bold '); ctx.fillText(line1, 14, 23);
-    ctx.fillStyle = phase === 'run' ? '#e8ebdc' : '#9aa38e'; fit(line2, 24, ''); ctx.fillText(line2, 14, 56);
-    ctx.fillStyle = '#26352a'; ctx.fillRect(14, 78, w - 28, 6);
-    ctx.fillStyle = phase === 'end' ? '#7f8975' : '#d6c47e'; ctx.fillRect(14, 78, (w - 28) * frac, 6);
-    focusTimer.tex.needsUpdate = true;
-  }
-  let focusAt = 0;
-  fontsReady.then(() => { focusKey = ''; });   // redraw once the web fonts arrive
-
   // ---------- 21:59 bugle ----------
   // The bugle (the user's own recording, sound/bugle.mp3) plays once at 21:59 on every open page.
   // Browsers only let a page play sound after the visitor has tapped or pressed a key on it, so the
@@ -3379,10 +3331,6 @@
       window.addEventListener('pointerdown', once, true); window.addEventListener('keydown', once, true);
     }
   })();
-  function stepFocus(now) {
-    if (now - focusAt < 250) return;
-    focusAt = now; drawFocus();
-  }
   // ---------- the base outside ----------
   // The 사지방 is one room at the east end of a barracks block. Its two walls that face the overview
   // camera (front, east) are cut at waist height on the outside, like a model with the walls sliced
@@ -3786,7 +3734,7 @@
 
     const t = now * 0.001, motion = reduceMotion ? 0 : 1;
     const dt = Math.min(0.05, Math.max(0, (now - (loop.prev || now)) / 1000)); loop.prev = now;
-    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol(); stepBoard(now); stepFocus(now);
+    stepWalk(dt); moveAvatars(dt); followCamera(dt); stepPatrol(); stepBoard(now);
     soldiers.forEach(s => {
       const p = t + s.phase;
       // pop in on arrival
