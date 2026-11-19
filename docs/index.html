@@ -497,8 +497,7 @@
     <details open>
       <summary>1. 운영 시간</summary>
       <table class="guide-time">
-        <tr><th>19:00</th><td>연등 시간 기록이 시작돼요. 화면을 켜 둔 동안 오늘 시간이 쌓여요</td></tr>
-        <tr><th>21:00</th><td>불이 켜져요</td></tr>
+        <tr><th>19:00</th><td>불이 켜지고 연등 시간 기록이 시작돼요. 화면을 켜 둔 동안 오늘 시간이 쌓여요</td></tr>
         <tr><th>21:30</th><td>자리에 앉아 오늘의 목표를 적어요</td></tr>
         <tr><th>21:59</th><td>취침나팔이 울려요. 끄려면 아래 🔔을 눌러요</td></tr>
         <tr><th>22:00–23:30</th><td>30분마다 한마디가 바뀌어요</td></tr>
@@ -2585,12 +2584,9 @@
     const d = new Date(), h = d.getHours(), m = d.getMinutes();
     $('clock').textContent = pad(h) + ':' + pad(m);
     const remain = $('remain');
-    if (h >= 21) {
+    if (h >= 19) {
       const left = (24 - h) * 60 - m;
       remain.textContent = `기록 중 · 소등까지 ${Math.floor(left / 60)}시간 ${pad(left % 60)}분`;
-      remain.classList.remove('off');
-    } else if (h >= 19) {
-      remain.textContent = '기록 중 · 21:00 점등';
       remain.classList.remove('off');
     } else if (h < 6) {
       remain.textContent = '소등 중 · 06:00까지 기록';
@@ -2599,14 +2595,14 @@
       remain.textContent = '19:00부터 기록 시작';
       remain.classList.add('off');
     }
-    // room lights follow the barracks schedule: on at 21:00, off at 24:00 until 21:00 the next evening
-    const on = h >= 21;
+    // room lights: on at 19:00 (when the evening record starts), off at 24:00 until 19:00 the next evening
+    const on = h >= 19;
     if (on !== lightsOn) {
       const first = lightsOn === null;
       applyLights(on);
       if (!first) say(on ? '점등' : '소등', on
-        ? '21:00 점등했습니다. 21:30부터 자리에 앉아 오늘의 목표를 적어주세요.'
-        : '24:00 소등했습니다. 모니터는 켜져 있어서 조금 더 머물 수 있어요. 21:00에 다시 불이 켜집니다.');
+        ? '19:00 점등했습니다. 지금부터 연등 시간이 기록돼요. 자리에 앉아 오늘의 목표를 적어주세요.'
+        : '24:00 소등했습니다. 모니터는 켜져 있어서 조금 더 머물 수 있어요. 19:00에 다시 불이 켜집니다.');
     }
     drawClock();
     updateNotice(d);
@@ -2737,8 +2733,8 @@
   }
   function noticeFor(d) {
     const mins = d.getHours() * 60 + d.getMinutes();
-    if (mins < 21 * 60) return { chip: '소등', text: '소등 시간입니다. 모니터 불빛으로만 머물 수 있어요. 21:00에 불이 켜집니다.' };
-    if (mins < 21 * 60 + 30) return { chip: '점등', text: '불이 켜졌습니다. 21:30부터 자리에 앉아 오늘의 목표를 적어주세요.' };
+    if (mins < 19 * 60) return { chip: '소등', text: '소등 시간입니다. 모니터 불빛으로만 머물 수 있어요. 19:00에 불이 켜집니다.' };
+    if (mins < 21 * 60 + 30) return { chip: '점등', text: '불이 켜졌습니다. 연등 시간이 기록되고 있어요. 21:30부터 자리에 앉아 오늘의 목표를 적어주세요.' };
     if (mins >= 21 * 60 + 30 && mins < 22 * 60) return { chip: '공지', text: '자리에 착석하여 오늘의 목표를 적어주세요.' };
     if (mins >= 22 * 60 && mins < 23 * 60 + 50) return { chip: '오늘의 한마디', text: mottoFor(d, Math.floor((mins - 22 * 60) / 30)) };
     if (mins >= 23 * 60 + 50) return { chip: '공지', text: '내일 할 일을 적으면서 하루를 마무리하세요.' };
