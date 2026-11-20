@@ -490,7 +490,20 @@
       <thead><tr><td>순위</td><th>이름</th><td>오늘</td><td>누적</td></tr></thead>
       <tbody id="boardList"></tbody>
     </table>
-    <h3 class="board-sub">오늘 군단별 합계</h3>
+    <section id="monthBox" hidden>
+      <h3 class="board-sub" id="monthTitle">이번 달 베스트 부대</h3>
+      <table class="board-list">
+        <thead><tr><td>순위</td><th>소속</th><td>인원</td><td>이번 달 합계</td></tr></thead>
+        <tbody id="monthCorps"></tbody>
+      </table>
+      <h3 class="board-sub">이번 달 개인 순위</h3>
+      <table class="board-list">
+        <thead><tr><td>순위</td><th>이름</th><td></td><td>이번 달</td></tr></thead>
+        <tbody id="monthTop"></tbody>
+      </table>
+      <p class="diary-note" id="monthMine"></p>
+    </section>
+    <h3 class="board-sub">오늘 군단별 합계 (지금 접속 중)</h3>
     <table class="board-list">
       <thead><tr><td>순위</td><th>소속</th><td>인원</td><td>오늘 합계</td></tr></thead>
       <tbody id="corpsList"></tbody>
@@ -2486,6 +2499,69 @@
     me.t = Math.floor(s.today / 60); me.T = Math.floor(s.total / 60);
   }, 0);
 
+  // ---------- 서버 (Supabase): monthly records for 월간 베스트 부대 ----------
+  // Each browser signs in as an anonymous Supabase user and, about once a minute, reports the minutes
+  // it counted since the last report (report_time caps them by real elapsed time, 19:00–06:00 KST).
+  // month_ranking returns this month's totals per 소속 and the top 20. The key below is the public
+  // (anon / publishable) key, which is meant to be in the page; the table itself is closed to it.
+  // Schema: supabase/schema.sql. With no URL set, all of this stays off.
+  const SB_URL = '', SB_KEY = '';
+  const server = { month: null, ok: false };
+  if (SB_URL && SB_KEY) (() => {
+    const AUTH_KEY = 'saji-sb', SENT_KEY = 'saji-sb-sent';
+    const load = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+    const keep = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* this visit only */ } };
+    let auth = load(AUTH_KEY), authing = null;
+    const call = (path, body, token, keepalive) => fetch(SB_URL + path, {
+      method: 'POST', keepalive: !!keepalive,
+      headers: Object.assign({ apikey: SB_KEY, 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+      body: JSON.stringify(body || {}),
+    }).then(async r => { const j = await r.json().catch(() => null); if (!r.ok) throw Object.assign(new Error('http ' + r.status), { status: r.status, j }); return j; });
+    const saveAuth = j => {
+      auth = { at: j.access_token, rt: j.refresh_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+      keep(AUTH_KEY, auth);
+    };
+    // a valid access token: reuse, refresh, or sign in anonymously (one at a time)
+    function token() {
+      if (auth && auth.at && auth.exp - Date.now() > 60000) return Promise.resolve(auth.at);
+      if (authing) return authing;
+      authing = (auth && auth.rt
+        ? call('/auth/v1/token?grant_type=refresh_token', { refresh_token: auth.rt }).catch(() => call('/auth/v1/signup', {}))
+        : call('/auth/v1/signup', {})
+      ).then(j => { saveAuth(j); return auth.at; }).finally(() => { authing = null; });
+      return authing;
+    }
+    const rpc = (fn, args, keepalive) => token().then(t => call('/rest/v1/rpc/' + fn, args, t, keepalive))
+      .catch(e => { if (e.status === 401) { auth = null; keep(AUTH_KEY, null); } throw e; });
+
+    // what has been reported already today, so a reload doesn't send the same minutes twice
+    let sent = load(SENT_KEY) || { day: '', t: 0 };
+    let busy = false;
+    function report(keepalive) {
+      if (busy || !me.cp) return;
+      const day = recordDay();
+      if (sent.day !== day) sent = { day, t: 0 };
+      if (me.t < sent.t) sent.t = me.t;                    // local record was reset
+      const add = me.t - sent.t;
+      if (add <= 0) return;
+      busy = true;
+      const upto = me.t;
+      rpc('report_time', { p_day: day, p_add: add, p_corps: me.cp, p_name: me.nick || '용사' }, keepalive)
+        .then(() => { sent = { day, t: upto }; keep(SENT_KEY, sent); server.ok = true; })
+        .catch(() => { server.ok = false; })
+        .finally(() => { busy = false; });
+    }
+    function fetchMonth() {
+      rpc('month_ranking', {}).then(j => { server.month = j; server.ok = true; boardDirty = true; })
+        .catch(() => { server.ok = false; });
+    }
+    setTimeout(() => { report(); fetchMonth(); }, 3000);
+    setInterval(report, 60000);
+    setInterval(fetchMonth, 5 * 60000);
+    addEventListener('pagehide', () => report(true));
+    server.refresh = fetchMonth;
+  })();
+
   // ---------- 자리 비움 ----------
   // I'm away while this tab is hidden, or after 30 minutes with no tap, click, key or scroll when I
   // don't answer the "still studying?" check within 60 seconds. Away time isn't recorded; others see
@@ -3375,13 +3451,43 @@
       ctx.textAlign = 'right'; ctx.font = `20px ${BODY}`; ctx.fillStyle = '#c9cfbe'; ctx.fillText(fmtMin(r.t), cols.today, y);
       ctx.font = `700 21px ${BODY}`; ctx.fillStyle = '#f1eedc'; ctx.fillText(fmtMin(r.T), cols.total, y);
     });
-    // bottom line: today's leading 소속
+    // bottom line: this month's best unit from the server, or else today's leading 소속 among those here
     const cr = corpsRows(rows);
+    const mc = server.month && server.month.corps && server.month.corps.find(c => CORPS.has(c.corps));
     ctx.fillStyle = 'rgba(214,196,126,0.35)'; ctx.fillRect(24, h - 52, w - 48, 2);
-    center(ctx, cr.length ? `오늘 1위 소속 · ${cr[0].name} ${fmtMin(cr[0].t)} (${cr[0].n}명) · 눌러서 전체 보기` : '19:00부터 화면을 켜 둔 시간을 재요 · 눌러서 전체 보기',
-      `${cr.length ? '600 18px' : '16px'} ${BODY}`, cr.length ? '#e6c55a' : '#7f8770', w / 2, h - 24);
+    const foot = mc ? `이번 달 베스트 부대 · ${CORPS.get(mc.corps)} ${fmtMin(mc.minutes)} (${mc.people}명) · 눌러서 전체 보기`
+      : cr.length ? `오늘 1위 소속 · ${cr[0].name} ${fmtMin(cr[0].t)} (${cr[0].n}명) · 눌러서 전체 보기` : '19:00부터 화면을 켜 둔 시간을 재요 · 눌러서 전체 보기';
+    const lead = mc || cr.length;
+    let fpx = 18; ctx.font = `600 ${fpx}px ${BODY}`; while (ctx.measureText(foot).width > w - 40 && fpx > 12) ctx.font = `600 ${--fpx}px ${BODY}`;
+    center(ctx, foot, `${lead ? '600 ' + fpx + 'px' : '16px'} ${BODY}`, lead ? '#e6c55a' : '#7f8770', w / 2, h - 24);
     boardCanvas.tex.needsUpdate = true;
-    if (!$('boardDlg').hidden) { fillBoardList(rows, scope); fillCorpsList(cr); }
+    if (!$('boardDlg').hidden) { fillBoardList(rows, scope); fillCorpsList(cr); fillMonth(); }
+  }
+  // 이번 달 (from the server): best units, top 20 people, my own total
+  function fillMonth() {
+    const m = server.month;
+    $('monthBox').hidden = !m;
+    if (!m) return;
+    const [y, mo] = String(m.month || '').split('-');
+    $('monthTitle').textContent = y && mo ? `${y}년 ${Number(mo)}월 베스트 부대` : '이번 달 베스트 부대';
+    const rowsOf = (tb, list, empty, cells) => {
+      tb.textContent = '';
+      if (!list.length) {
+        const tr = document.createElement('tr'), th = document.createElement('th');
+        th.colSpan = 4; th.textContent = empty; tr.appendChild(th); tb.appendChild(tr); return;
+      }
+      list.forEach((x, i) => {
+        const tr = document.createElement('tr'); if (x.me || x.corps === me.cp && cells === corpsCells) tr.className = 'me';
+        cells(x, i).forEach((v, k) => { const td = document.createElement(k === 1 ? 'th' : 'td'); td.textContent = v; tr.appendChild(td); });
+        tb.appendChild(tr);
+      });
+    };
+    const mins = v => (Number.isInteger(v) && v >= 0 ? v : 0);
+    const corpsCells = (c, i) => [String(i + 1), CORPS.get(c.corps) + (c.corps === me.cp ? ' (내 소속)' : ''), mins(c.people) + '명', fmtMin(mins(c.minutes))];
+    const topCells = (u, i) => [String(i + 1), withCorps(cleanCorps(u.corps), cleanNick(u.name) || '용사') + (u.me ? ' (나)' : ''), '', fmtMin(mins(u.minutes))];
+    rowsOf($('monthCorps'), (m.corps || []).filter(c => CORPS.has(c.corps)), '이번 달 기록이 아직 없어요.', corpsCells);
+    rowsOf($('monthTop'), (m.top || []).slice(0, 20), '이번 달 기록이 아직 없어요.', topCells);
+    $('monthMine').textContent = `내 이번 달 기록 ${fmtMin(mins(m.mine))} · 기록은 서버에 하루 단위로 모여요(19:00–06:00, 1분마다). 매달 1일에 새로 시작해요.`;
   }
   function fillCorpsList(cr) {
     const tb = $('corpsList'); tb.textContent = '';
@@ -3653,7 +3759,7 @@
   })();
   ext.update(Math.max(0, dayLevel));
 
-  function openBoard() { $('boardDlg').hidden = false; keys.clear(); drawBoard(); $('boardClose').focus(); }
+  function openBoard() { $('boardDlg').hidden = false; keys.clear(); if (server.refresh) server.refresh(); drawBoard(); $('boardClose').focus(); }
   {
     const d = $('boardDlg');
     const close = () => { d.hidden = true; };
