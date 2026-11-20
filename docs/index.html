@@ -250,7 +250,28 @@
   .name-hint { font-size: 12px; color: var(--muted); }
   .name-hint.bad { color: var(--alert); }
   .doing-row input:focus-visible { outline: 2px solid var(--khaki); outline-offset: 1px; }
+  .tag .who-line { display: flex; align-items: center; justify-content: center; gap: 5px; }
   .tag .who { display: block; }
+  /* 계급: horizontal bars like the army enlisted insignia (이병 1 … 병장 4) */
+  .tag .rk { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; }
+  .tag .rk .bars { display: inline-flex; flex-direction: column; gap: 1px; padding: 2px; background: #2b2f1f; border-radius: 2px; }
+  .tag .rk .bars b { display: block; width: 9px; height: 2px; background: #e8d48a; }
+  .tag .rk.lead { color: #1f5e2a; }
+  .tag .rk.lead .bars { box-shadow: 0 0 0 1.5px #3f9b4f; }
+  .tag .next { display: block; margin-top: 3px; font-size: 9px; font-weight: 600; opacity: 0.7; }
+  .tag .next:empty { display: none; }
+  .tag .aw { display: none; margin-top: 3px; font-size: 11px; font-weight: 700; }
+  .tag.away { opacity: 0.6; filter: grayscale(0.7); }
+  .tag.away .aw { display: block; }
+  .away-check {
+    position: fixed; left: 50%; top: 22%; transform: translateX(-50%); z-index: 40;
+    display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center;
+    width: min(340px, calc(100vw - 32px)); padding: 16px; border-radius: 8px;
+    background: var(--paper); color: var(--khaki-ink); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  }
+  .away-check strong { font-size: 17px; }
+  .away-check span { font-size: 13px; line-height: 1.45; }
+  .away-check button { background: #2f3a28; color: #f1e8d4; border-color: transparent; font-weight: 600; padding: 12px 18px; font-size: 14px; }
   .tag .doing {
     display: block; margin-top: 4px; padding-top: 5px; max-width: 220px;
     border-top: 1px solid rgba(30, 28, 14, 0.25);
@@ -467,6 +488,13 @@
   </div>
 </div>
 
+<!-- 자리 비움 확인: after 30 minutes with no tap or key -->
+<div class="away-check" id="awayCheck" role="alertdialog" aria-labelledby="awayTitle" aria-describedby="awayMsg" hidden>
+  <strong id="awayTitle">아직 공부 중인가요?</strong>
+  <span id="awayMsg">30분 동안 움직임이 없었어요. 60초 안에 누르지 않으면 자리 비움으로 바뀌고 기록이 멈춰요.</span>
+  <button id="awayYes" class="primary" type="button">공부 중이에요</button>
+</div>
+
 <!-- 소속 고르기: shown on entry until a corps is picked -->
 <div class="diary" id="corpsDlg" role="dialog" aria-modal="true" aria-labelledby="corpsTitle" hidden>
   <div class="diary-card guide-card">
@@ -529,6 +557,8 @@
         <li><b>오늘의 목표 2가지</b>를 적고 <b>완료</b>를 누르면 내 모니터에 떠요. 나만 보여요. 바꾸려면 <b>수정</b>을 눌러요.</li>
         <li><b>지금 하는 일</b>을 적으면 내 머리 위에 떠서 모두에게 보여요. (예: 토익 단어 암기)</li>
         <li>내 모니터 맨 위에 <b>오늘 기록</b>(19:00부터 쌓인 시간)이 보여요. 기록은 다음 날 아침 6시까지 이어져요.</li>
+        <li><b>계급 진급</b>: 누적 기록이 쌓이면 이름표의 계급이 올라가요. 이병 → 일병(10시간) → 상병(30시간) → 병장(60시간) → 분대장(100시간). 내 이름표 아래에 다음 진급까지 남은 시간이 보여요.</li>
+        <li><b>자리 비움</b>: 다른 탭으로 가거나, 30분 동안 아무것도 누르지 않은 채 "아직 공부 중인가요?"에 60초 안에 답하지 않으면 자리 비움이 돼요. 이름표가 회색 💤으로 바뀌고 그동안은 기록되지 않아요. 화면을 누르면 바로 돌아와요.</li>
       </ul>
     </details>
     <details>
@@ -1725,7 +1755,7 @@
   const cleanCorps = v => (typeof v === 'string' && CORPS.has(v) ? v : '');
   let myCorps = '';
   try { myCorps = cleanCorps(localStorage.getItem('saji-corps')); } catch (e) { /* no storage: pick each visit */ }
-  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true, t: 0, T: 0, cp: myCorps,
+  const me = { id: 'me', n: 0, seat: null, seatAt: 0, saluteAt: 0, joinedAt: Date.now(), doing: '', days: 0, gen: false, isMe: true, t: 0, T: 0, cp: myCorps, away: false,
     // where I stand when not seated (world x/z on the floor, ry = facing); start in the centre aisle
     x: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 0.6, ry: Math.PI };
   // "지금 하는 일": a short status everyone in the 사지방 sees under your name tag.
@@ -1745,6 +1775,18 @@
   // names are shown with the 소속 in front: "3군단_용사1"
   const withCorps = (cp, name) => (cp && CORPS.has(cp) ? `${CORPS.get(cp)}_${name}` : name);
   const label = p => withCorps(p.cp, p.nick || '용사' + (p.n || '')) + (p.isMe ? ' (나)' : '');
+  // ---------- 계급: promoted by total recorded minutes (T) ----------
+  const RANKS = [[0, '이병', 1], [600, '일병', 2], [1800, '상병', 3], [3600, '병장', 4], [6000, '분대장', 4]];
+  const rankOf = T => { let i = 0; RANKS.forEach((r, k) => { if ((T || 0) >= r[0]) i = k; }); return i; };
+  const hm = m => (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`);
+  const promoText = i => (RANKS[i][1] === '분대장' ? '분대장이 되었습니다' : `${RANKS[i][1]}으로 진급했습니다`);
+  function fillRank(el, i) {
+    el.textContent = '';
+    el.className = 'rk' + (RANKS[i][1] === '분대장' ? ' lead' : '');
+    const bars = document.createElement('i'); bars.className = 'bars';
+    for (let k = 0; k < RANKS[i][2]; k++) bars.appendChild(document.createElement('b'));
+    el.append(bars, RANKS[i][1]);
+  }
 
   // two people on one seat: the earlier seatAt keeps it
   function seatOwners(list) {
@@ -1787,12 +1829,17 @@
       if (!a) {
         const tag = document.createElement('div');
         tag.className = 'tag' + (p.isMe ? ' me' : '');
+        const line = document.createElement('span'); line.className = 'who-line';
+        const rk = document.createElement('span'); rk.className = 'rk';
         const who = document.createElement('span'); who.className = 'who';
+        line.append(rk, who);
+        const aw = document.createElement('span'); aw.className = 'aw'; aw.textContent = '💤 자리 비움';
         const doing = document.createElement('span'); doing.className = 'doing';
         const rec = document.createElement('span'); rec.className = 'rec';
-        tag.append(who, doing, rec);
+        const next = document.createElement('span'); next.className = 'next';
+        tag.append(line, aw, doing, rec, next);
         tagLayer.appendChild(tag);
-        a = { tag, who, doing, rec, where: null, sol: null, saluteAt: p.saluteAt, named: !!p.n, name: '' };
+        a = { tag, rk, who, doing, rec, next, where: null, sol: null, saluteAt: p.saluteAt, named: !!p.n, name: '', rank: null, lastT: null };
         avatars.set(p.id, a);
       }
       if (a.where !== where) {
@@ -1829,6 +1876,23 @@
       a.named = !!p.n;
       a.name = label(p);
       if (a.who.textContent !== a.name) a.who.textContent = a.name;
+      // rank from total minutes; a promotion is announced only when it happens live (a small step in
+      // T), not when a page loads someone's saved total
+      const T = p.T || 0, ri = rankOf(T);
+      if (a.rank !== ri) {
+        if (a.rank != null && ri > a.rank && a.lastT != null && T - a.lastT <= 5 && p.n) {
+          say('진급', p.isMe ? `축하합니다! ${promoText(ri)}. 충성!` : `${label(p)}이(가) ${promoText(ri)}.`);
+        }
+        a.rank = ri; fillRank(a.rk, ri);
+      }
+      a.lastT = T;
+      // only on my own tag: how far to the next rank
+      const nextTxt = p.isMe && ri < RANKS.length - 1 ? `${RANKS[ri + 1][1]}까지 ${hm(RANKS[ri + 1][0] - T)}` : '';
+      if (a.next.textContent !== nextTxt) a.next.textContent = nextTxt;
+      // away: hidden tab, or no answer to the "still studying?" check
+      const away = !!p.away;
+      a.tag.classList.toggle('away', away);
+      a.sol.away = away;
       const doing = cleanDoing(p.doing);
       if (a.doing.textContent !== doing) a.doing.textContent = doing;
       // only the number of recorded days travels to others, never the photos
@@ -1903,6 +1967,7 @@
         t: Number.isInteger(pr.t) ? num(pr.t, 0, 1440) || 0 : 0,
         T: Number.isInteger(pr.T) ? num(pr.T, 0, 5e6) || 0 : 0,
         cp: cleanCorps(pr.cp),
+        away: pr.aw === 1,
         // floor position while walking: anything outside the room (or not a number) is dropped
         x: num(pr.x, -6, 6), z: num(pr.z, -5, 5), ry: num(pr.ry, -7, 7),
       });
@@ -1915,7 +1980,7 @@
     hall.presence({ n: me.n, seat: me.seat, seatAt: me.seatAt, saluteAt: me.saluteAt, joinedAt: me.joinedAt, doing: me.doing, days: me.days, gen: me.gen ? 1 : 0, nick: me.nick,
       // seated, the seat says where I am; standing, my floor spot (cm precision)
       x: me.seat ? null : Math.round(me.x * 100) / 100, z: me.seat ? null : Math.round(me.z * 100) / 100,
-      ry: me.seat ? null : Math.round(me.ry * 100) / 100, t: me.t, T: me.T, cp: me.cp }).catch(() => {});
+      ry: me.seat ? null : Math.round(me.ry * 100) / 100, t: me.t, T: me.T, cp: me.cp, aw: me.away ? 1 : 0 }).catch(() => {});
     // the lobby copy (public 사지방 only): which 사지방, the name, and today's / total minutes.
     // Sent only when it changes, since publishMe also runs for every step I walk.
     if (lobbyRef && !privateCode) {
@@ -2389,9 +2454,9 @@
       const day = recordDay();
       if (day !== s.day) { s.day = day; s.today = 0; }
       const hr = new Date(now).getHours(), rec = hr >= REC_FROM || hr < 6;
-      if (rec && !document.hidden) { s.today += dt; s.total += dt; }
+      if (rec && !document.hidden && !me.away) { s.today += dt; s.total += dt; }
       const t = Math.floor(s.today / 60), T = Math.floor(s.total / 60);
-      if (t !== me.t || T !== me.T || rec !== wasRec) { wasRec = rec; me.t = t; me.T = T; publishMe(); boardDirty = true; drawMine(); }
+      if (t !== me.t || T !== me.T || rec !== wasRec) { wasRec = rec; me.t = t; me.T = T; publishMe(); boardDirty = true; drawMine(); render(); }
       if (now - savedAt > 15000) { savedAt = now; save(); }
     };
     setInterval(tick, 1000);
@@ -2399,6 +2464,58 @@
     document.addEventListener('visibilitychange', () => { last = Date.now(); if (document.hidden) save(); });
     me.t = Math.floor(s.today / 60); me.T = Math.floor(s.total / 60);
   }, 0);
+
+  // ---------- 자리 비움 ----------
+  // I'm away while this tab is hidden, or after 30 minutes with no tap, click, key or scroll when I
+  // don't answer the "still studying?" check within 60 seconds. Away time isn't recorded; others see
+  // a grey "💤 자리 비움" tag and my avatar slumped over the desk. Any tap or key brings me back.
+  (() => {
+    const IDLE_MS = 30 * 60 * 1000, ANSWER_MS = 60 * 1000;
+    const box = $('awayCheck'), msg = $('awayMsg');
+    let lastInput = Date.now(), askAt = 0, idleAway = false, actx = null;
+    const update = () => {
+      const v = document.hidden || idleAway;
+      if (v === me.away) return;
+      me.away = v; publishMe(); render();
+    };
+    const closeCheck = () => { askAt = 0; box.hidden = true; };
+    const beep = () => {   // a soft two-note chime, in case they are reading a book and not the screen
+      if (!actx) return;
+      [880, 660].forEach((f, i) => {
+        const o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + i * 0.25;
+        o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+        o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + 0.55);
+      });
+    };
+    const active = () => {
+      lastInput = Date.now();
+      if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* no audio */ } }
+      else if (actx.state === 'suspended') actx.resume().catch(() => {});
+      if (askAt) closeCheck();
+      if (idleAway) { idleAway = false; say('복귀', '돌아왔군요! 다시 기록을 쌓습니다.'); }
+      update();
+    };
+    ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => addEventListener(ev, active, { capture: true, passive: true }));
+    $('awayYes').addEventListener('click', active);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { lastInput = Date.now(); closeCheck(); }   // coming back to the tab counts as being here
+      update();
+    });
+    setInterval(() => {
+      if (document.hidden || idleAway) return;
+      const now = Date.now();
+      if (!askAt && now - lastInput > IDLE_MS) { askAt = now; box.hidden = false; beep(); }
+      if (askAt) {
+        const left = Math.max(0, Math.ceil((ANSWER_MS - (now - askAt)) / 1000));
+        msg.textContent = `30분 동안 움직임이 없었어요. ${left}초 안에 누르지 않으면 자리 비움으로 바뀌고 기록이 멈춰요.`;
+        if (left === 0) {
+          closeCheck(); idleAway = true; update();
+          say('자리 비움', '응답이 없어 자리 비움으로 바꿨어요. 이 시간은 기록되지 않아요. 화면을 누르면 돌아와요.');
+        }
+      }
+    }, 1000);
+  })();
 
   // ---------- 정품 다이어리 인증 (QR inside the paper diary) ----------
   // The QR opens this page with ?d=SERIAL.SIGNATURE. The signature is ECDSA P-256 over the serial,
@@ -3180,7 +3297,7 @@
     }
     rows.push(mine);
     rows.sort((a, b) => b.T - a.T || b.t - a.t || (a.me ? -1 : 1));
-    rows.forEach((r, i) => (r.rank = i + 1));
+    rows.forEach((r, i) => { r.rank = i + 1; r.name = `${RANKS[rankOf(r.T)][1]} ${r.name}`; });
     return rows;
   }
   // today's minutes summed per 소속 (people with no 소속 yet are left out), biggest first
@@ -3740,6 +3857,16 @@
       s.salute.g.visible = saluting;
       s.arms[1].g.visible = !saluting;
       if (saluting) { s.head.rotation.set(0, 0, 0); if (s.flip) s.flip.visible = false; return; }
+      if (s.away) {   // 자리 비움: head dropped, dozing, no page turning
+        if (s.flip) s.flip.visible = false;
+        if (s.standing) { s.root.position.y = 0; s.root.rotation.z = 0; s.head.rotation.set(-0.55, 0, 0.15); return; }
+        s.head.rotation.x = -0.85 + Math.sin(p * 0.5) * 0.03 * motion;
+        s.head.rotation.y = 0;
+        s.head.rotation.z = 0.25;
+        s.arms[1].fore.rotation.y = 0; s.arms[1].fore.position.y = 0.81;
+        return;
+      }
+      s.head.rotation.z = 0;
       if (s.standing) {
         // a little bouncing waddle while walking
         const w = s.walking && motion, step = t * 11 + s.phase;
